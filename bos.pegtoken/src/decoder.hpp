@@ -7,12 +7,34 @@
 #include <eosiolib/eosio.hpp>
 #include <eosiolib/transaction.h>
 #include <string>
+#include <vector>
 
 namespace eosio {
 
 using std::string;
 
 constexpr char hex_map[] = "0123456789abcdef";
+
+inline std::vector<string> split_string(string str, string delimiter)
+{
+    std::vector<string> res;
+    if (str.size() == 0) {
+        return res;
+    }
+
+    size_t pos = 0;
+    while ((pos = str.find(delimiter)) != std::string::npos) {
+        auto tmp = str.substr(0, pos);
+        if (tmp.size() > 0) {
+            res.push_back(tmp);
+        }
+        str.erase(0, pos + delimiter.length());
+    }
+    if (str.size() > 0) {
+        res.push_back(str);
+    }
+    return res;
+}
 
 inline uint8_t hex_to_digit(char ch)
 {
@@ -99,6 +121,24 @@ bool valid_ethereum_addr(string addr)
 
     eosio_assert(addr.size() == 40, "invalid eth adr len, expected: 40");
 
+    for (auto&& r : addr) {
+        if (!(r >= '0' && r <= '9')
+            && !(r >= 'a' && r <= 'z')
+            && !(r >= 'A' && r <= 'Z')) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool valid_ethereum_addr_strict(string addr)
+{
+    auto prefix_index = addr.find("0x");
+    if (prefix_index == 0)
+        addr = addr.substr(prefix_index + 2);
+
+    eosio_assert(addr.size() == 40, "invalid eth adr len, expected: 40");
+
     auto origin_addr = addr;
 
     std::transform(addr.begin(), addr.end(), addr.begin(), ::tolower);
@@ -117,6 +157,58 @@ bool valid_ethereum_addr(string addr)
     }
 
     return addr == origin_addr;
+}
+
+bool valid_usdt_addr(string addr)
+{
+    auto addrs_pairs = split_string(addr, "|");
+
+    switch (addrs_pairs.size()) {
+    case 0: {
+        return false;
+    } break;
+    case 1: {
+        auto splitted_addr = split_string(addrs_pairs[0], ":");
+        if (splitted_addr.size() != 2) {
+            return false;
+        }
+        if (splitted_addr[0] == "BTC") {
+            return valid_bitcoin_addr(splitted_addr[1]);
+        } else if (splitted_addr[0] == "ETH") {
+            return valid_ethereum_addr(splitted_addr[1]);
+        } else {
+            return false;
+        }
+    } break;
+    case 2: {
+        bool btc_checked = false, eth_checked = false;
+        for (auto&& s : addrs_pairs) {
+            auto splitted_addr = split_string(s, ":");
+            if (splitted_addr.size() != 2) {
+                return false;
+            }
+            if (splitted_addr[0] == "BTC") {
+                if (btc_checked || !valid_bitcoin_addr(splitted_addr[1])) {
+                    return false;
+                } else {
+                    btc_checked = true;
+                }
+            } else if (splitted_addr[0] == "ETH") {
+                if (eth_checked || !valid_ethereum_addr(splitted_addr[1])) {
+                    return false;
+                } else {
+                    eth_checked = true;
+                }
+            } else {
+                return false;
+            }
+        }
+        return true;
+    } break;
+    default:
+        return false;
+    }
+    return false;
 }
 
 capi_checksum256 get_trx_id()
