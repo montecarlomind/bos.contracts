@@ -12,3 +12,4 @@ rm /bos-mnt/bos.pegtoken.wasm
 eosio-cpp -I=/bos-mnt/include/ -o /bos-mnt/bos.pegtoken.wasm /bos-mnt/src/bos.pegtoken.cpp
 
 
+

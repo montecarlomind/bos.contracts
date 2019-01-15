@@ -8,7 +8,10 @@ $ cd /Users/huobi/bos.pegtoken
 
 $ docker-compose up -d
 
-$ docker-compose exec cdt /bin/sh /bos-mnt/build.sh
+测试链:
+$ docker-compose exec cdt /bin/sh /bos-mnt/build-testnet.sh
+主链:
+$ docker-compose exec cdt /bin/sh /bos-mnt/build-mainnet.sh
 
 $ docker-compose down
 
