@@ -288,7 +288,7 @@ namespace eosio {
         });
     }
 
-    void pegtoken::applyaddr(name applicant, symbol_code sym_code, name to) {
+    void pegtoken::applyaddr(symbol_code sym_code, name to) {
 
         require_auth(to);
 

@@ -34,7 +34,7 @@ public:
 
     [[eosio::action]] void retire( asset quantity, string memo );
 
-    [[eosio::action]] void applyaddr( name applicant, symbol_code sym_code, name to );
+    [[eosio::action]] void applyaddr( symbol_code sym_code, name to );
 
     [[eosio::action]] void assignaddr( symbol_code sym_code, name to, string address );
 
