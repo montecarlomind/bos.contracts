@@ -1,5 +1,7 @@
-#include "bos.pegtoken.hpp"
+#include <bos.pegtoken/bos.pegtoken.hpp>
 #include <eosiolib/transaction.hpp>
+#include <eosiolib/action.hpp>
+
 
 #define STRING_LEN_CHECK( str, len ) \
     eosio_assert( ( str ).size() <= len, "param " #str " too long, maximum length is " #len );

@@ -8,7 +8,10 @@
 #include <eosiolib/time.hpp>
 #include <string>
 
+
 namespace eosio {
+
+using std::string;
 
 using transaction_id_type = capi_checksum256;
 
