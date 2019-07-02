@@ -357,11 +357,11 @@ vector<name> bos_oracle::random_arbitrator(uint64_t arbitration_id, uint64_t arb
     }
 
     // TODO: 修改
-    // 专业仲裁第一轮, 人数指数倍增加, 2^1+1, 2^2+1, 2^3+1, 2^num+1
+    // TODO: 专业仲裁第一轮, 人数指数倍增加, 2^1+1, 2^2+1, 2^3+1, 2^num+1, num为冲裁的轮次
     // TODO: 专业仲裁人数不够, 走大众仲裁
-    // TODO: 最开始不够, 选过程中不够
+    // TODO: 人数不够情况有两种: 1.最开始不够; 2.随机选择过程中不够;
     // TODO: 大众仲裁人数为专业仲裁2倍, 启动过程一样, 阶段重新设置, 大众冲裁结束不能再申诉, 进入大众仲裁需要重新抵押, 抵押变为2倍
-    // 增加抵押金, 记录方法为大众仲裁, 仲裁个数为2倍, 增加抵押金
+    // TODO: 增加抵押金, 记录方法为大众仲裁, 仲裁个数为2倍, 增加抵押金
 
     // if(chosen_from_arbitrators.size() < arbi_to_chose) {
     //   if(crowd_size > arbi_to_chose*2)
@@ -497,6 +497,9 @@ void bos_oracle::timertimeout(uint64_t arbitration_id, arbitration_timer_type ti
         }
         case arbitration_timer_type::resp_arbitrate_timeout: {
             random_chose_arbitrator(arbitration_id, arbicaseapp_iter->service_id, arbicaseapp_iter->required_arbitrator);
+            break;
+        }
+        case arbitration_timer_type::upload_result_timeout: {
             break;
         }
     }
@@ -644,14 +647,14 @@ std::tuple<std::vector<name>, asset> bos_oracle::get_balances(uint64_t arbitrati
   uint64_t stake_type = static_cast<uint64_t>(is_provider);
   arbitration_stake_accounts stake_acnts(_self, arbitration_id);
 
-  auto type_index = addresses.get_index<"type"_n>();
+  auto type_index = stake_acnts.get_index<"type"_n>();
   auto type_itr = type_index.lower_bound(stake_type);
   auto upper = type_index.upper_bound(stake_type);
   std::vector<name> accounts;
   asset stakes = asset(0, core_symbol());
-  while (type_itr != uppper) {
-    if (type_itr->is_provider = is_provider) {
-      stakes.push_back(type_itr->account);
+  while (type_itr != upper) {
+    if (type_itr->is_provider == is_provider) {
+      accounts.push_back(type_itr->account);
       stakes += type_itr->balance;
     }
 
@@ -672,7 +675,7 @@ std::tuple<std::vector<name>, asset> bos_oracle::get_provider_service_stakes(uin
   data_service_provisions provisionstable(_self, service_id);
 
   std::vector<name> providers;
-  asset stakes= asset(0,core_symbole());
+  asset stakes= asset(0, core_symbol());
 
   for (const auto &p : provisionstable) {
     if (p.status == provision_status::provision_reg ) {
@@ -736,14 +739,13 @@ void bos_oracle::slash_service_stake(uint64_t service_id, const std::vector<name
  */
 void bos_oracle::slash_arbitration_stake(uint64_t arbitration_id, std::vector<name>& slash_accounts) {
   arbitration_stake_accounts stake_acnts(_self, arbitration_id);
-  for (auto &a : std::get<0>(slash_accounts)) {
+  for (auto &a : slash_accounts) {
     auto acc = stake_acnts.find(a.value);
     check(acc != stake_acnts.end(), "");
 
     stake_acnts.modify(acc, same_payer,
                        [&](auto &a) { a.balance = asset(0, core_symbol()); });
   }
- 
 }
 
 /**
