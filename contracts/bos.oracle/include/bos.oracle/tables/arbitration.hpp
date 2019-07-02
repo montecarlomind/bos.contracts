@@ -52,7 +52,15 @@ enum arbi_step_type : uint64_t
    arbi_choosing_arbitrator,
    arbi_started,
    arbi_end,
-   arbi_timeout
+   arbi_timeout,
+   arbi_reappeal,
+   arbi_reappeal_timeout_end
+};
+
+enum final_winer_type : uint64_t
+{
+   provider = 1,
+   consumer
 };
 
 struct [[ eosio::table, eosio::contract("bos.oracle") ]] complainant
@@ -100,6 +108,8 @@ struct [[ eosio::table, eosio::contract("bos.oracle") ]] arbicaseapp
    uint64_t final_result;
    uint64_t required_arbitrator;
    uint64_t last_process_id;
+   uint64_t final_winer;
+   bool is_provider;
    time_point_sec deadline;
    time_point_sec last_process_update_time;
    std::string evidence_info;

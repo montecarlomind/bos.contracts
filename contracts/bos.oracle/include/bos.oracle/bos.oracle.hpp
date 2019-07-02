@@ -233,8 +233,8 @@ public:
     [[eosio::action]] void uploadeviden( name applicant, uint64_t arbitration_id, std::string evidence );
 
     [[eosio::action]] void uploadresult( name arbitrator, uint64_t arbitration_id, uint64_t result, uint64_t process_id );
-    
-    [[eosio::action]] void reappeal( name applicant, uint64_t arbitration_id, uint64_t service_id, uint64_t result, uint64_t process_id, bool is_provider, asset amount);
+
+    [[eosio::action]] void reappeal( name applicant, uint64_t arbitration_id, uint64_t service_id, uint64_t result, uint64_t process_id, bool is_provider, asset amount, uint8_t arbi_method, std::string reason );
     
     [[eosio::action]] void rerespcase( name provider, uint64_t arbitration_id, uint64_t result, uint64_t process_id, bool is_provider);
     
@@ -253,6 +253,16 @@ public:
     void timeout_deferred(uint64_t arbitration_id, arbitration_timer_type timer_type, uint64_t time_length) const;
     void upload_result_timeout_deferred(name arbitrator, uint64_t arbitration_id, uint64_t process_id, arbitration_timer_type timer_type, uint64_t time_length) const;
     void handle_upload_result(name arbitrator, uint64_t arbitration_id, uint64_t process_id);
+    std::tuple<std::vector<name>, asset> get_balances(uint64_t arbitration_id, bool is_provider);
+    std::tuple<std::vector<name>, asset> get_provider_service_stakes(uint64_t service_id);
+    void slash_service_stake(uint64_t service_id, const std::vector<name>& slash_accounts, const asset &stake_amount );
+    void slash_arbitration_stake(uint64_t arbitration_id, std::vector<name>& slash_accounts);
+    void pay_arbitration_award(uint64_t arbitration_id, std::vector<name>& award_accounts, double dividend_amount);
+    void pay_arbitration_fee(uint64_t arbitration_id, const std::vector<name>& fee_accounts, double fee_amount);
+    void handle_rearbitration_result(uint64_t arbitration_id);
+    void sub_balance(name owner, asset value, uint64_t arbitration_id);
+    void add_balance(name owner, asset value, uint64_t arbitration_id, bool is_provider);
+
   /// 
   ///
   /// bos.arbitration end
