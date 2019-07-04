@@ -24,6 +24,7 @@ void bos_oracle::regarbitrat( name account, public_key pubkey, uint8_t type, ass
     check( iter == abr_table.end(), "Arbitrator already registered" );
     transfer(account, arbitrat_account, stake_amount, "regarbitrat deposit.");
 
+    // 注册仲裁员, 填写信息
     abr_table.emplace( get_self(), [&]( auto& p ) {
         p.account = account;
         p.pubkey = pubkey;
@@ -39,12 +40,14 @@ void bos_oracle::complain( name applicant, uint64_t service_id, asset amount, st
     require_auth( applicant );
     check( arbi_method == arbi_method_type::crowd_arbitration || arbi_method_type::multiple_rounds, "`arbi_method` can only be 1 or 2." );
 
+    // 检查申诉的服务的服务状态
     data_services svctable(get_self(), get_self().value);
     auto svc_iter = svctable.find(service_id);
     check(svc_iter != svctable.end(), "service does not exist");
     check(svc_iter->status == service_status::service_in, "service status shoule be service_in");
     transfer(applicant, arbitrat_account, amount, "complain deposit.");
 
+    // 申诉者表
     auto complainant_tb = complainants( get_self(), get_self().value );
     auto complainant_by_svc = complainant_tb.template get_index<"svc"_n>();
     auto iter_compt = complainant_by_svc.find( service_id );
@@ -57,6 +60,7 @@ void bos_oracle::complain( name applicant, uint64_t service_id, asset amount, st
         check( iter_compt->status == complainant_status::wait_for_accept, "This complainant is not available." );
     }
 
+    // 创建申诉者
     auto appeal_id = 0;
     complainant_tb.emplace( get_self(), [&]( auto& p ) {
         p.appeal_id = complainant_tb.available_primary_key();
@@ -79,7 +83,7 @@ void bos_oracle::complain( name applicant, uint64_t service_id, asset amount, st
     auto arbicaseapp_tb_by_svc = arbicaseapp_tb.template get_index<"svc"_n>();
     auto arbicaseapp_iter = arbicaseapp_tb_by_svc.find( service_id );
     auto arbi_id = arbicaseapp_tb.available_primary_key();
-    /// 不为空插入
+    // 仲裁案件不存在或者存在但是状态为初始化, 那么创建一个仲裁案件
     if (arbicaseapp_iter == arbicaseapp_tb_by_svc.end() || 
         (arbicaseapp_iter != arbicaseapp_tb_by_svc.end() && arbicaseapp_iter->arbi_step == arbi_step_type::arbi_started)) {
         arbicaseapp_tb.emplace( get_self(), [&]( auto& p ) {
@@ -88,13 +92,14 @@ void bos_oracle::complain( name applicant, uint64_t service_id, asset amount, st
             p.service_id = service_id;
             p.evidence_info = reason;
             p.arbi_step = arbi_step_type::arbi_init;
-            p.required_arbitrator = 5;
+            p.required_arbitrator = 3; // 专业仲裁第一轮默认为3个仲裁员
             p.deadline = time_point_sec(now() + 3600);
             p.add_applicant(applicant);
         } );
     } else {
         auto arbi_iter = arbicaseapp_tb.find(arbicaseapp_iter->arbitration_id);
         check(arbi_iter != arbicaseapp_tb.end(), "Can not find such arbitration.");
+        // 仲裁案件存在, 为此案件新增一个申诉者
         arbicaseapp_tb.modify(arbi_iter, get_self(), [&]( auto& p ) {
             p.add_applicant(applicant);
         } );
@@ -108,6 +113,7 @@ void bos_oracle::complain( name applicant, uint64_t service_id, asset amount, st
 
     // Service data providers
     bool hasProvider = false;
+    // 对所有的数据提供者发送通知, 告诉数据提供者应诉
     for(auto iter = svcprovider_tb.begin(); iter != svcprovider_tb.end(); iter++)
     {
         if(!svcprovider_iter->stop_service) {
@@ -305,13 +311,16 @@ void bos_oracle::respcase( name provider, uint64_t arbitration_id, uint64_t resu
     auto arbiprocess_tb = arbitration_processs( get_self(), get_self().value );
     auto arbipro_iter = arbiprocess_tb.find( process_id );
     if ( arbipro_iter == arbiprocess_tb.end() ) {
+        // 第一次应诉, 创建1个仲裁过程
         arbiprocess_tb.emplace( get_self(), [&]( auto& p ) {
             p.process_id = arbiprocess_tb.available_primary_key();
             p.arbitration_id = arbitration_id;
+            p.num_id = 1;
             p.add_responder(provider);
         } );
         random_chose_arbitrator(arbitration_id, arbi_iter->service_id, arbi_iter->required_arbitrator);
     } else {
+        // 新增应诉者
         arbiprocess_tb.modify( arbipro_iter, get_self(), [&]( auto& p ) {
             p.arbitration_id = arbitration_id;
             p.add_responder(provider);
