@@ -70,8 +70,8 @@ struct [[ eosio::table, eosio::contract("bos.oracle") ]] complainant
    uint8_t status;
    uint8_t arbi_method;
    bool is_sponsor;
-   bool is_provider;//provider
-   uint64_t arbitration_id;  //reappeal 
+   bool is_provider;  // 申诉者是否为数据提供者
+   uint64_t arbitration_id;  // 如果为再申诉, 需要记录此申诉ID
    name applicant;
    time_point_sec appeal_time;
    std::string reason;
@@ -127,7 +127,10 @@ struct [[ eosio::table, eosio::contract("bos.oracle") ]] arbitration_process
    uint64_t process_id;
    uint64_t arbitration_id;
    uint64_t num_id;
-   std::vector<name> responders;
+   uint64_t required_arbitrator; // 每一轮需要的仲裁员的个数: 2^num_id+1
+   std::vector<name> responders; // 数据提供者应诉者
+   std::vector<name> arbitrators; // 每一轮响应的仲裁员
+
    asset stake_amount;
    std::vector<uint64_t> arbitrator_arbitration_results;
    std::string evidence_info;
@@ -137,6 +140,7 @@ struct [[ eosio::table, eosio::contract("bos.oracle") ]] arbitration_process
    uint64_t primary_key() const { return process_id; }
    uint64_t by_arbi() const { return arbitration_id; }
    void add_responder ( name responder ) { responders.push_back( responder ); }
+   void add_arbitrator ( name arbitrator ) { arbitrators.push_back( arbitrator ); }
    void add_result ( uint64_t result ) { arbitrator_arbitration_results.push_back( result ); }
    uint64_t result_size () const { return arbitrator_arbitration_results.size(); }
    uint64_t total_result () const {
