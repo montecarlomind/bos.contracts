@@ -242,8 +242,9 @@ void bos_oracle::handle_upload_result(name arbitrator, uint64_t arbitration_id, 
     } );
 
     // Add result to arbitration_results
-    add_arbitration_result(arbitrator, arbitration_id, arbi_result, arbipro_iter->process_id);  
-    timeout_deferred(arbitration_id, process_id, arbitration_timer_type::appeal_timeout, eosio::hours(10).to_seconds());
+    add_arbitration_result(arbitrator, arbitration_id, arbi_result, arbipro_iter->process_id);
+    // 看是否有人再次申诉
+    timeout_deferred(arbitration_id, process_id, arbitration_timer_type::reappeal_timeout, eosio::hours(10).to_seconds());
 }
 
 /**
@@ -568,12 +569,27 @@ void bos_oracle::timertimeout(uint64_t arbitration_id, uint64_t process_id, arbi
     auto arbicaseapp_iter = arbicaseapp_tb.find(arbitration_id);
     check(arbicaseapp_iter != arbicaseapp_tb.end(), "Can not find such arbitration.");
     
+    auto arbiprocess_tb = arbitration_processs(get_self(), get_self().value);
     switch(timer_type)
     {
         case arbitration_timer_type::appeal_timeout: {
             if(arbicaseapp_iter->arbi_step == arbi_step_type::arbi_init) {
                 handle_arbitration(arbitration_id);
                 handle_arbitration_result(arbitration_id);
+            }
+            break;
+        }
+        case arbitration_timer_type::reappeal_timeout: { // 有人再次申诉
+            if(arbicaseapp_iter->arbi_step == arbi_step_type::arbi_reappeal) {
+                // 启动下一轮, 随机选择仲裁员
+                auto arbiprocess_iter = arbiprocess_tb.find(process_id);
+                check(arbicaseapp_iter != arbicaseapp_tb.end(), "Can not find such process.");
+                random_chose_arbitrator(arbitration_id, process_id, arbicaseapp_iter->service_id, arbiprocess_iter->required_arbitrator);
+            } else {
+                // 没人再次申诉, 记录最后一次仲裁过程
+                arbicaseapp_tb.modify(arbicaseapp_iter, get_self(), [&]( auto& p ) {
+                    p.last_process_id = process_id;
+                });
             }
             break;
         }
@@ -591,7 +607,6 @@ void bos_oracle::timertimeout(uint64_t arbitration_id, uint64_t process_id, arbi
             break;
         }
         case arbitration_timer_type::resp_arbitrate_timeout: {
-            auto arbiprocess_tb = arbitration_processs(get_self(), get_self().value);
             auto arbiprocess_iter = arbiprocess_tb.find(process_id);
             check(arbicaseapp_iter != arbicaseapp_tb.end(), "Can not find such process.");
 
@@ -608,7 +623,7 @@ void bos_oracle::timertimeout(uint64_t arbitration_id, uint64_t process_id, arbi
 }
 
 /**
- * 处理仲裁案件某一轮结果
+ * 处理仲裁案件结果
  */
 void bos_oracle::handle_arbitration(uint64_t arbitration_id) {
     // 找到这个仲裁

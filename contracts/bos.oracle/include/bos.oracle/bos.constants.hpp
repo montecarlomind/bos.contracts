@@ -34,6 +34,7 @@ enum transfer_type : uint8_t { tt_freeze , tt_delay };
 
 enum arbitration_timer_type: uint8_t {
   appeal_timeout,
+  reappeal_timeout,
   resp_appeal_timeout,
   resp_arbitrate_timeout,
   upload_result_timeout,
