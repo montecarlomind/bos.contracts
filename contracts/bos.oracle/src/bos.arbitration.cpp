@@ -44,7 +44,7 @@ void bos_oracle::regarbitrat( name account, public_key pubkey, uint8_t type, ass
  */
 void bos_oracle::complain( name applicant, uint64_t service_id, asset amount, std::string reason, uint8_t arbi_method ) {
     require_auth( applicant );
-    check( arbi_method == arbi_method_type::crowd_arbitration || arbi_method_type::multiple_rounds, "`arbi_method` can only be 1 or 2." );
+    check( arbi_method == arbi_method_type::public_arbitration || arbi_method_type::multiple_rounds, "`arbi_method` can only be 1 or 2." );
 
     // 检查申诉的服务的服务状态
     data_services svctable(get_self(), get_self().value);
@@ -72,7 +72,6 @@ void bos_oracle::complain( name applicant, uint64_t service_id, asset amount, st
         p.appeal_id = complainant_tb.available_primary_key();
         p.service_id = service_id;
         p.status = complainant_status::wait_for_accept;
-        p.arbi_method = arbi_method;
         p.is_sponsor = is_sponsor;
         p.applicant = applicant;
         p.appeal_time = time_point_sec(now());
@@ -96,6 +95,7 @@ void bos_oracle::complain( name applicant, uint64_t service_id, asset amount, st
             p.arbitration_id = arbi_id;
             p.appeal_id = appeal_id;
             p.service_id = service_id;
+            p.arbi_method = arbi_method;
             p.evidence_info = reason;
             p.arbi_step = arbi_step_type::arbi_init; // 仲裁状态为初始化状态, 等待应诉
             p.deadline = time_point_sec(now() + 3600);
@@ -244,7 +244,9 @@ void bos_oracle::handle_upload_result(name arbitrator, uint64_t arbitration_id, 
     // Add result to arbitration_results
     add_arbitration_result(arbitrator, arbitration_id, arbi_result, arbipro_iter->process_id);
     // 看是否有人再次申诉
-    timeout_deferred(arbitration_id, process_id, arbitration_timer_type::reappeal_timeout, eosio::hours(10).to_seconds());
+    if (arbi_iter->arbi_method == arbi_method_type::multiple_rounds) {
+        timeout_deferred(arbitration_id, process_id, arbitration_timer_type::reappeal_timeout, eosio::hours(10).to_seconds());
+    }
 }
 
 /**
@@ -258,8 +260,11 @@ void bos_oracle::resparbitrat( name arbitrator, asset amount, uint64_t arbitrati
     auto arbicaseapp_tb = arbicaseapps( get_self(), get_self().value );
     auto arbi_iter = arbicaseapp_tb.find( arbitration_id );
     check(arbi_iter != arbicaseapp_tb.end(), "Can not find such arbitration.");
+    bool public_arbi = arbi_iter->arbi_method == arbi_method_type::public_arbitration; // 是否为大众仲裁
+
     arbicaseapp_tb.modify( arbi_iter, get_self(), [&]( auto& p ) {
-        p.arbi_step = arbi_step_type::arbi_responded; // 状态为有仲裁员确认
+        p.arbi_step = public_arbi ? arbi_step_type::arbi_public_responded 
+            : arbi_step_type::arbi_responded; // 状态为有仲裁员确认
     } );
 
     // 将仲裁员添加此轮应诉的仲裁者中
@@ -273,11 +278,15 @@ void bos_oracle::resparbitrat( name arbitrator, asset amount, uint64_t arbitrati
     // 如果仲裁员人数满足需求, 那么开始仲裁
     if (arbiprocess_iter->arbitrators.size() >= arbiprocess_iter->required_arbitrator) {
         arbicaseapp_tb.modify( arbi_iter, get_self(), [&]( auto& p ) {
-            p.arbi_step = arbi_step_type::arbi_started;
+            p.arbi_step = public_arbi ? arbi_step_type::arbi_public_started : arbi_step_type::arbi_started;
         } );
 
         // 等待仲裁员上传结果
-        upload_result_timeout_deferred(arbitrator, arbitration_id, 0, arbitration_timer_type::upload_result_timeout, eosio::hours(10).to_seconds());
+        if (public_arbi) {
+            upload_result_timeout_deferred(arbitrator, arbitration_id, 0, arbitration_timer_type::public_upload_result_timeout, eosio::hours(10).to_seconds());
+        } else {
+            upload_result_timeout_deferred(arbitrator, arbitration_id, 0, arbitration_timer_type::upload_result_timeout, eosio::hours(10).to_seconds());
+        }
     } else {
         // 否则继续选择仲裁员
         auto arbi_to_chose = arbiprocess_iter->required_arbitrator - arbiprocess_iter->arbitrators.size();
@@ -302,8 +311,6 @@ void bos_oracle::reappeal( name applicant, uint64_t arbitration_id, uint64_t ser
 
     // 新增申诉者资料
     auto complainant_tb = complainants( get_self(), get_self().value );
-    auto complainant_by_svc = complainant_tb.template get_index<"svc"_n>();
-    auto iter_compt = complainant_by_svc.find( service_id );
     auto appeal_id = 0;
     complainant_tb.emplace( get_self(), [&]( auto& p ) {
         p.appeal_id = complainant_tb.available_primary_key();
@@ -402,10 +409,11 @@ void bos_oracle::rerespcase( name responder, uint64_t arbitration_id, uint64_t r
  * 随机选择仲裁员
  */
 void bos_oracle::random_chose_arbitrator(uint64_t arbitration_id, uint64_t process_id, uint64_t service_id, uint64_t arbi_to_chose) const {
+    vector<name> arbitrators = random_arbitrator(arbitration_id, process_id, arbi_to_chose);
     auto arbicaseapp_tb = arbicaseapps( get_self(), get_self().value );
     auto arbi_iter = arbicaseapp_tb.find( arbitration_id );
+    check( arbi_iter != arbicaseapp_tb.end(), "Can not find such arbitration." );
 
-    vector<name> arbitrators = random_arbitrator(arbitration_id, process_id, arbi_to_chose);
     auto notify_amount = eosio::asset(1, _bos_symbol);
     // 通知选择的仲裁员
     for (auto arbitrator : arbitrators) {
@@ -415,7 +423,12 @@ void bos_oracle::random_chose_arbitrator(uint64_t arbitration_id, uint64_t proce
     }
 
     // 等待仲裁员响应
-    timeout_deferred(arbitration_id, process_id, arbitration_timer_type::resp_arbitrate_timeout, eosio::hours(10).to_seconds());
+    if (arbi_iter->arbi_method == arbi_method_type::multiple_rounds) {
+        timeout_deferred(arbitration_id, process_id, arbitration_timer_type::resp_arbitrate_timeout, eosio::hours(10).to_seconds());
+    } else if (arbi_iter->arbi_method == arbi_method_type::public_arbitration) {
+        // 等待大众仲裁员响应
+        timeout_deferred(arbitration_id, process_id, arbitration_timer_type::public_resp_arbitrate_timeout, eosio::hours(10).to_seconds());
+    }
 }
 
 /**
@@ -451,14 +464,26 @@ vector<name> bos_oracle::random_arbitrator(uint64_t arbitration_id, uint64_t pro
     // TODO: 大众仲裁人数为专业仲裁2倍, 启动过程一样, 阶段重新设置, 大众冲裁结束不能再申诉, 进入大众仲裁需要重新抵押, 抵押变为2倍
     // TODO: 增加抵押金, 记录方法为大众仲裁, 仲裁个数为2倍, 增加抵押金
 
-    // if(chosen_from_arbitrators.size() < arbi_to_chose) {
-    //   if(crowd_size > arbi_to_chose*2)
-    //   {
-    //      arib // 修改为大众仲裁阶段, 开始大众仲裁->仲裁过程新增1个, 仲裁案件更改状态
-    //      notif() // 通知这一轮的应诉者和申诉者
-    //   }
-    //   return;
-    // }
+    if(chosen_from_arbitrators.size() < arbi_to_chose) {
+        // 专业仲裁人数不够, 走大众仲裁
+        std::vector<name> final_arbi;
+        arbicaseapp_tb.modify(iter_arbicaseapp, get_self(), [&]( auto& p ) {
+            p.arbi_step = arbi_step_type::arbi_public_choosing_arbitrator; //大众仲裁阶段开始
+            p.arbi_method = arbi_method_type::public_arbitration; //仲裁案件变为大众仲裁
+        } );
+        // 新增一个大众仲裁过程
+        uint64_t proid = 0;
+        arbiprocess_tb.emplace( get_self(), [&]( auto& p ) {
+            p.process_id = arbiprocess_tb.available_primary_key();
+            p.arbitration_id = arbitration_id;
+            p.num_id = arbipro_iter->num_id + 1; // 仲裁过程+1
+            p.required_arbitrator = 2 * arbi_to_chose; // 该轮需要的仲裁员的个数
+            proid = p.process_id;
+        } );
+        // 挑选专业仲裁员过程中人数不够，进入大众仲裁，开始随机挑选大众仲裁
+        random_chose_arbitrator(arbitration_id, proid, service_id, arbi_to_chose * 2);
+        return final_arbi;
+    }
 
     // 挑选 `arbi_to_chose` 个仲裁员
     while (arbitrators_set.size() < arbi_to_chose) {
@@ -558,7 +583,8 @@ void bos_oracle::upload_result_timeout_deferred(name arbitrator, uint64_t arbitr
 
 void bos_oracle::uploaddefer(name arbitrator, uint64_t arbitration_id, uint64_t process_id, arbitration_timer_type timer_type)
 {
-    if (timer_type == arbitration_timer_type::upload_result_timeout) {
+    if (timer_type == arbitration_timer_type::upload_result_timeout || 
+        timer_type == arbitration_timer_type::public_upload_result_timeout ) {
         handle_upload_result(arbitrator, arbitration_id, process_id);
     }
 }
@@ -616,7 +642,20 @@ void bos_oracle::timertimeout(uint64_t arbitration_id, uint64_t process_id, arbi
             }
             break;
         }
+        case arbitration_timer_type::public_resp_arbitrate_timeout: {
+            auto arbiprocess_iter = arbiprocess_tb.find(process_id);
+            check(arbicaseapp_iter != arbicaseapp_tb.end(), "Can not find such process.");
+
+            // 如果状态为还在选择仲裁员, 那么继续选择仲裁员
+            if(arbicaseapp_iter->arbi_step == arbi_step_type::arbi_public_choosing_arbitrator) {
+                random_chose_arbitrator(arbitration_id, process_id, arbicaseapp_iter->service_id, arbiprocess_iter->required_arbitrator);
+            }
+            break;
+        }
         case arbitration_timer_type::upload_result_timeout: {
+            break;
+        }
+        case arbitration_timer_type::public_upload_result_timeout {
             break;
         }
     }

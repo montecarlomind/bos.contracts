@@ -41,7 +41,7 @@ enum complainant_status : uint8_t
 
 enum arbi_method_type : uint8_t
 {
-   crowd_arbitration = 1,
+   public_arbitration = 1,
    multiple_rounds = 2
 };
 
@@ -54,7 +54,13 @@ enum arbi_step_type : uint64_t
    arbi_end,
    arbi_timeout,
    arbi_reappeal,
-   arbi_reappeal_timeout_end
+   arbi_reappeal_timeout_end,
+   arbi_public_init,
+   arbi_public_responded,
+   arbi_public_choosing_arbitrator,
+   arbi_public_started,
+   arbi_public_end,
+   arbi_public_timeout
 };
 
 enum final_winer_type : uint64_t
@@ -68,7 +74,6 @@ struct [[ eosio::table, eosio::contract("bos.oracle") ]] complainant
    uint64_t appeal_id;
    uint64_t service_id;
    uint8_t status;
-   uint8_t arbi_method;
    bool is_sponsor;
    bool is_provider;  // 申诉者是否为数据提供者
    uint64_t arbitration_id;  // 如果为再申诉, 需要记录此申诉ID
@@ -109,6 +114,7 @@ struct [[ eosio::table, eosio::contract("bos.oracle") ]] arbicaseapp
    uint64_t required_arbitrator;
    uint64_t last_process_id;
    uint64_t final_winer;
+   uint8_t arbi_method;
    bool is_provider;
    time_point_sec deadline;
    time_point_sec last_process_update_time;

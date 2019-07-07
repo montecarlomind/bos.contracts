@@ -38,5 +38,12 @@ enum arbitration_timer_type: uint8_t {
   resp_appeal_timeout,
   resp_arbitrate_timeout,
   upload_result_timeout,
-  resp_reappeal_timeout
+  resp_reappeal_timeout,
+
+  public_appeal_timeout,
+  public_reappeal_timeout,
+  public_resp_appeal_timeout,
+  public_resp_arbitrate_timeout,
+  public_upload_result_timeout,
+  public_resp_reappeal_timeout
 };
