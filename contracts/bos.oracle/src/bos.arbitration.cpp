@@ -196,6 +196,7 @@ void bos_oracle::uploadresult( name arbitrator, uint64_t arbitration_id, uint64_
     auto arbi_iter = arbicaseapp_tb.find( arbitration_id );
     check(arbi_iter != arbicaseapp_tb.end(), "Can not find such arbitration case application.");
     check(arbi_iter->deadline >= time_point_sec(now()), "update result deadline.");
+    bool public_arbi = arbi_iter->arbi_method == arbi_method_type::public_arbitration;
 
     // 仲裁员上传本轮仲裁结果
     auto arbiprocess_tb = arbitration_processs( get_self(), get_self().value );
@@ -208,9 +209,10 @@ void bos_oracle::uploadresult( name arbitrator, uint64_t arbitration_id, uint64_
     // 计算本轮结果, 条件为上传结果的人数 >= 本轮所需要的仲裁员人数 / 2
     // 满足条件取消计算结果定时器, 直接计算上传结果
     if (arbipro_iter->result_size() >= arbi_iter->required_arbitrator / 2) {
-       uint128_t deferred_id = make_deferred_id(arbitration_id, arbitration_timer_type::upload_result_timeout);
-       cancel_deferred(deferred_id);
-       handle_upload_result(arbitrator, arbitration_id, process_id);
+        auto timer_type = public_arbi ? arbitration_timer_type::public_upload_result_timeout : arbitration_timer_type::upload_result_timeout;
+        uint128_t deferred_id = make_deferred_id(arbitration_id, timer_type);
+        cancel_deferred(deferred_id);
+        handle_upload_result(arbitrator, arbitration_id, process_id);
     }
 }
 
@@ -243,7 +245,7 @@ void bos_oracle::handle_upload_result(name arbitrator, uint64_t arbitration_id, 
 
     // Add result to arbitration_results
     add_arbitration_result(arbitrator, arbitration_id, arbi_result, arbipro_iter->process_id);
-    // 看是否有人再次申诉
+    // 看是否有人再次申诉, 大众仲裁不允许再申诉
     if (arbi_iter->arbi_method == arbi_method_type::multiple_rounds) {
         timeout_deferred(arbitration_id, process_id, arbitration_timer_type::reappeal_timeout, eosio::hours(10).to_seconds());
     }
@@ -254,13 +256,13 @@ void bos_oracle::handle_upload_result(name arbitrator, uint64_t arbitration_id, 
  */
 void bos_oracle::resparbitrat( name arbitrator, asset amount, uint64_t arbitration_id, uint64_t process_id ) {
     require_auth( arbitrator );
-    transfer(arbitrator, arbitrat_account, amount, "resparbitrat deposit.");
-
     // 修改仲裁案件状态
     auto arbicaseapp_tb = arbicaseapps( get_self(), get_self().value );
     auto arbi_iter = arbicaseapp_tb.find( arbitration_id );
     check(arbi_iter != arbicaseapp_tb.end(), "Can not find such arbitration.");
     bool public_arbi = arbi_iter->arbi_method == arbi_method_type::public_arbitration; // 是否为大众仲裁
+    auto stake_amount = public_arbi ? 2 * amount : amount;
+    transfer(arbitrator, arbitrat_account, stake_amount, "resparbitrat deposit.");
 
     arbicaseapp_tb.modify( arbi_iter, get_self(), [&]( auto& p ) {
         p.arbi_step = public_arbi ? arbi_step_type::arbi_public_responded 
@@ -302,6 +304,19 @@ void bos_oracle::reappeal( name applicant, uint64_t arbitration_id, uint64_t ser
     // 检查再申诉服务状态
     require_auth( applicant );
 
+    // 检查仲裁案件
+    auto arbicaseapp_tb = arbicaseapps( get_self(), get_self().value );
+    auto arbicaseapp_iter = arbicaseapp_tb.find( arbitration_id );
+    check (arbicaseapp_iter != arbicaseapp_tb.end(), "Can not find such arbitration case application.");
+    check (arbicaseapp_iter->arbi_method == arbi_method_type::multiple_rounds, "Can only be multiple rounds arbitration.");
+
+    // 改变仲裁状态为再申诉
+    arbicaseapp_tb.modify(arbicaseapp_iter, get_self(), [&]( auto& p ) {
+        p.add_applicant(applicant);
+        p.is_provider = is_provider;
+        p.arbi_step = arbi_step_type::arbi_reappeal;
+    } );
+
     // 检查被申诉的数据服务状态为服务中
     data_services svctable(get_self(), get_self().value);
     auto svc_iter = svctable.find(service_id);
@@ -316,7 +331,6 @@ void bos_oracle::reappeal( name applicant, uint64_t arbitration_id, uint64_t ser
         p.appeal_id = complainant_tb.available_primary_key();
         p.service_id = service_id;
         p.status = complainant_status::wait_for_accept;
-        p.arbi_method = arbi_method;
         p.is_sponsor = false;
         p.is_provider = is_provider;
         p.arbitration_id = arbitration_id;
@@ -329,18 +343,6 @@ void bos_oracle::reappeal( name applicant, uint64_t arbitration_id, uint64_t ser
     // add_freeze
     const uint64_t duration = eosio::days(1).to_seconds();
     add_delay(service_id, applicant, time_point_sec(now()), duration, amount);
-
-    // 检查仲裁案件
-    auto arbicaseapp_tb = arbicaseapps( get_self(), get_self().value );
-    auto arbicaseapp_iter = arbicaseapp_tb.find( arbitration_id );
-    check (arbicaseapp_iter != arbicaseapp_tb.end(), "Can not find such arbitration case application.");
-
-    // 改变仲裁状态为再申诉
-    arbicaseapp_tb.modify(arbicaseapp_iter, get_self(), [&]( auto& p ) {
-        p.add_applicant(applicant);
-        p.is_provider = is_provider;
-        p.arbi_step = arbi_step_type::arbi_reappeal;
-    } );
 
     if(!is_provider) {
         // 如果是数据使用者再申诉, 那么通知所有的数据提供者
@@ -379,6 +381,7 @@ void bos_oracle::rerespcase( name responder, uint64_t arbitration_id, uint64_t r
     auto arbicaseapp_tb = arbicaseapps( get_self(), get_self().value );
     auto arbi_iter = arbicaseapp_tb.find( arbitration_id );
     check(arbi_iter != arbicaseapp_tb.end(), "Can not find such arbitration case application.");
+    check (arbi_iter->arbi_method == arbi_method_type::multiple_rounds, "Can only be multiple rounds arbitration.");
 
     // 修改仲裁案件状态为: 正在选择仲裁员
     arbicaseapp_tb.modify( arbi_iter, get_self(), [&]( auto& p ) {
@@ -457,12 +460,11 @@ vector<name> bos_oracle::random_arbitrator(uint64_t arbitration_id, uint64_t pro
         }
     }
 
-    // TODO: 修改
-    // TODO: 专业仲裁第一轮, 人数指数倍增加, 2^1+1, 2^2+1, 2^3+1, 2^num+1, num为冲裁的轮次
-    // TODO: 专业仲裁人数不够, 走大众仲裁
-    // TODO: 人数不够情况有两种: 1.最开始不够; 2.随机选择过程中不够;
-    // TODO: 大众仲裁人数为专业仲裁2倍, 启动过程一样, 阶段重新设置, 大众冲裁结束不能再申诉, 进入大众仲裁需要重新抵押, 抵押变为2倍
-    // TODO: 增加抵押金, 记录方法为大众仲裁, 仲裁个数为2倍, 增加抵押金
+    // 专业仲裁第一轮, 人数指数倍增加, 2^1+1, 2^2+1, 2^3+1, 2^num+1, num为冲裁的轮次
+    // 专业仲裁人数不够, 走大众仲裁
+    // 人数不够情况有两种: 1.最开始不够; 2.随机选择过程中不够;
+    // 大众仲裁人数为专业仲裁2倍, 启动过程一样, 阶段重新设置, 大众冲裁结束不能再申诉, 进入大众仲裁需要重新抵押, 抵押变为2倍
+    // 增加抵押金, 记录方法为大众仲裁, 仲裁个数为2倍, 增加抵押金
 
     if(chosen_from_arbitrators.size() < arbi_to_chose) {
         // 专业仲裁人数不够, 走大众仲裁
@@ -481,7 +483,7 @@ vector<name> bos_oracle::random_arbitrator(uint64_t arbitration_id, uint64_t pro
             proid = p.process_id;
         } );
         // 挑选专业仲裁员过程中人数不够，进入大众仲裁，开始随机挑选大众仲裁
-        random_chose_arbitrator(arbitration_id, proid, service_id, arbi_to_chose * 2);
+        random_chose_arbitrator(arbitration_id, proid, iter_arbicaseapp->service_id, arbi_to_chose * 2);
         return final_arbi;
     }
 
@@ -655,7 +657,7 @@ void bos_oracle::timertimeout(uint64_t arbitration_id, uint64_t process_id, arbi
         case arbitration_timer_type::upload_result_timeout: {
             break;
         }
-        case arbitration_timer_type::public_upload_result_timeout {
+        case arbitration_timer_type::public_upload_result_timeout: {
             break;
         }
     }
