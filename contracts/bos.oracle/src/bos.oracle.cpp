@@ -256,6 +256,7 @@ struct transferx {
       EOSLIB_SERIALIZE(transferx, (from)(to)(quantity)(memo))
     };
 
+
 extern "C" void apply(uint64_t receiver, uint64_t code, uint64_t action) {
     // print("&&&&&&&&&&&&&&&&&&&");
   if (action == "onerror"_n.value) {
@@ -268,7 +269,10 @@ extern "C" void apply(uint64_t receiver, uint64_t code, uint64_t action) {
 
  if (code == receiver || action == "onerror"_n.value) {
 
-EOSIO_DISPATCH(bos_oracle, (write)(setoracles)(clear)(addoracle)(removeoracle)(ask)(once)(disable)(push)
+      switch (action) {
+        // NB: Add custom method in bracets after () to use them as
+        // endpoints
+        EOSIO_DISPATCH_HELPER(bos_oracle, (write)(setoracles)(clear)(addoracle)(removeoracle)(ask)(once)(disable)(push)
 (regservice)(unregservice)(execaction)(stakeasset)(unstakeasset)(innerpush)(pushdata)(multipush)(addfeetypes)(addfeetype)(claim)
 (subscribe)(requestdata)(payservice)(confirmpay)
 (regarbitrat)(complain)(uploadeviden)(uploadresult)(resparbitrat)(respcase)
