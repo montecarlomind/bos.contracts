@@ -25,7 +25,8 @@ void bos_oracle::regarbitrat( name account, public_key pubkey, uint8_t type, ass
     auto abr_table = arbitrators( get_self(), get_self().value );
     auto iter = abr_table.find( account.value );
     check( iter == abr_table.end(), "Arbitrator already registered" );
-    transfer(account, arbitrat_account, stake_amount, "regarbitrat deposit.");
+    // TODO
+    // transfer(account, arbitrat_account, stake_amount, "regarbitrat deposit.");
 
     // 注册仲裁员, 填写信息
     abr_table.emplace( get_self(), [&]( auto& p ) {
@@ -553,12 +554,12 @@ void bos_oracle::update_arbitration_correcction(uint64_t arbitration_id) {
     }
 }
 
-uint128_t bos_oracle::make_deferred_id(uint64_t arbitration_id, arbitration_timer_type timer_type) const
+uint128_t bos_oracle::make_deferred_id(uint64_t arbitration_id, uint8_t timer_type) const
 {
     return (uint128_t(arbitration_id) << 64) | timer_type;
 }
 
-void bos_oracle::timeout_deferred(uint64_t arbitration_id, uint64_t process_id, arbitration_timer_type timer_type, uint64_t time_length) const
+void bos_oracle::timeout_deferred(uint64_t arbitration_id, uint64_t process_id, uint8_t timer_type, uint64_t time_length) const
 {
     transaction t;
     t.actions.emplace_back(permission_level{_self, active_permission}, _self,
@@ -571,7 +572,7 @@ void bos_oracle::timeout_deferred(uint64_t arbitration_id, uint64_t process_id, 
 }
 
 void bos_oracle::upload_result_timeout_deferred(name arbitrator, uint64_t arbitration_id, uint64_t process_id,
-    arbitration_timer_type timer_type, uint64_t time_length) const
+    uint8_t timer_type, uint64_t time_length) const
 {
     transaction t;
     t.actions.emplace_back(permission_level{_self, active_permission}, _self,
@@ -583,7 +584,7 @@ void bos_oracle::upload_result_timeout_deferred(name arbitrator, uint64_t arbitr
     t.send(deferred_id, get_self());
 }
 
-void bos_oracle::uploaddefer(name arbitrator, uint64_t arbitration_id, uint64_t process_id, arbitration_timer_type timer_type)
+void bos_oracle::uploaddefer(name arbitrator, uint64_t arbitration_id, uint64_t process_id, uint8_t timer_type)
 {
     if (timer_type == arbitration_timer_type::upload_result_timeout || 
         timer_type == arbitration_timer_type::public_upload_result_timeout ) {
@@ -591,7 +592,7 @@ void bos_oracle::uploaddefer(name arbitrator, uint64_t arbitration_id, uint64_t 
     }
 }
 
-void bos_oracle::timertimeout(uint64_t arbitration_id, uint64_t process_id, arbitration_timer_type timer_type)
+void bos_oracle::timertimeout(uint64_t arbitration_id, uint64_t process_id, uint8_t timer_type)
 {
     auto arbicaseapp_tb = arbicaseapps( get_self(), get_self().value );
     auto arbicaseapp_iter = arbicaseapp_tb.find(arbitration_id);
