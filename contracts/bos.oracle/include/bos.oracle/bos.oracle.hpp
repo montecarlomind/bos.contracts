@@ -1,19 +1,4 @@
 #pragma once
-/*
-
-  bos_oracle
-
-  Author: Guillaume "Gnome" Babin-Tremblay - EOS Titan
-
-  Website: https://eostitan.com
-  Email: guillaume@eostitan.com
-
-  Github: https://github.com/eostitan/bos_oracle/
-
-  Published under MIT License
-
-*/
-
 #include "bos.oracle/tables/arbitration.hpp"
 #include "bos.oracle/tables/consumer.hpp"
 #include "bos.oracle/tables/oracle.hpp"
@@ -40,7 +25,7 @@ public:
   static constexpr symbol _core_symbol = symbol(symbol_code("EOS"), 4);
   static constexpr uint64_t arbi_process_time_limit = 3600;
   static constexpr double default_arbitration_correct_rate = 0.6f;
-
+  
   using contract::contract;
   bos_oracle(name receiver, name code, datastream<const char *> ds)
       : contract(receiver, code, ds), requests(_self, _self.value),
@@ -340,6 +325,3 @@ private:
   /// common
   symbol core_symbol() const { return _core_symbol; };
 };
-
-
-

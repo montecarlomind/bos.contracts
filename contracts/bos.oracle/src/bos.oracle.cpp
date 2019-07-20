@@ -1,18 +1,3 @@
-/*
-
-  bos_oracle
-
-  Author: Guillaume "Gnome" Babin-Tremblay - EOS Titan
-  
-  Website: https://eostitan.com
-  Email: guillaume@eostitan.com
-
-  Github: https://github.com/eostitan/bos_oracle/
-  
-  Published under MIT License
-
-*/
-
 #include <eosiolib/eosio.hpp>
 #include <eosiolib/fixedpoint.hpp>
 #include <eosiolib/chain.h>
@@ -281,14 +266,12 @@ extern "C" void apply(uint64_t receiver, uint64_t code, uint64_t action) {
     }
   // print("&&&&&&&&&&&&&&&&&&&");
   if ( code == "eosio.token"_n.value && action == "transfer"_n.value ) {
-
     datastream<const char *> ds = datastream<const char *>(nullptr, 0);
-  
     bos_oracle thiscontract(name(receiver), name(code), ds);
-
-    
     const transferx &t = unpack_action_data <transferx> ();
-    thiscontract.on_transfer(t.from, t.to, t.quantity, t.memo);
+    check(t.from == name(receiver) || t.to == name(receiver), "invalid api call");
+    if (t.to == name(receiver)) {
+      thiscontract.on_transfer(t.from, t.to, t.quantity, t.memo);  
+    }
   }
-
 }

@@ -52,7 +52,8 @@ void bos_oracle::complain( name applicant, uint64_t service_id, asset amount, st
     auto svc_iter = svctable.find(service_id);
     check(svc_iter != svctable.end(), "service does not exist");
     check(svc_iter->status == service_status::service_in, "service status shoule be service_in");
-    transfer(applicant, arbitrat_account, amount, "complain deposit.");
+    // TODO
+    // transfer(applicant, arbitrat_account, amount, "complain deposit.");
 
     // 申诉者表
     auto complainant_tb = complainants( get_self(), get_self().value );
@@ -92,6 +93,7 @@ void bos_oracle::complain( name applicant, uint64_t service_id, asset amount, st
     // 仲裁案件不存在或者存在但是状态为开始仲裁, 那么创建一个仲裁案件
     if (arbicaseapp_iter == arbicaseapp_tb_by_svc.end() || 
         (arbicaseapp_iter != arbicaseapp_tb_by_svc.end() && arbicaseapp_iter->arbi_step == arbi_step_type::arbi_started)) {
+        eosio::print("arbicaseapp_tb.emplace");
         arbicaseapp_tb.emplace( get_self(), [&]( auto& p ) {
             p.arbitration_id = arbi_id;
             p.appeal_id = appeal_id;
@@ -112,7 +114,7 @@ void bos_oracle::complain( name applicant, uint64_t service_id, asset amount, st
     }
 
     // Data provider
-    auto svcprovider_tb = data_service_provisions( get_self(), get_self().value );
+    auto svcprovider_tb = data_service_provisions( get_self(), service_id );
     auto svcprovider_tb_by_svc = svcprovider_tb.template get_index<"bysvcid"_n>();
     auto svcprovider_iter = svcprovider_tb_by_svc.find( service_id );
     check(svcprovider_iter != svcprovider_tb_by_svc.end(), "Such service has no providers.");
@@ -124,7 +126,7 @@ void bos_oracle::complain( name applicant, uint64_t service_id, asset amount, st
     {
         if(!svcprovider_iter->stop_service) {
             hasProvider = true;
-            auto notify_amount = eosio::asset(1, _bos_symbol);
+            auto notify_amount = eosio::asset(1, core_symbol());
             // Transfer to provider
             auto memo = "arbitration_id: " + std::to_string(arbi_id)
                 + ", service_id: " + std::to_string(service_id) 
@@ -357,7 +359,7 @@ void bos_oracle::reappeal( name applicant, uint64_t arbitration_id, uint64_t ser
         for(auto iter = svcprovider_tb.begin(); iter != svcprovider_tb.end(); iter++) {
             if(!svcprovider_iter->stop_service) {
                 hasProvider = true;
-                auto notify_amount = eosio::asset(1, _bos_symbol);
+                auto notify_amount = eosio::asset(1, core_symbol());
                 // Transfer to provider
                 auto memo = "arbitration_id: " + std::to_string(arbitration_id)
                     + ", service_id: " + std::to_string(service_id) 
@@ -418,7 +420,7 @@ void bos_oracle::random_chose_arbitrator(uint64_t arbitration_id, uint64_t proce
     auto arbi_iter = arbicaseapp_tb.find( arbitration_id );
     check( arbi_iter != arbicaseapp_tb.end(), "Can not find such arbitration." );
 
-    auto notify_amount = eosio::asset(1, _bos_symbol);
+    auto notify_amount = eosio::asset(1, core_symbol());
     // 通知选择的仲裁员
     for (auto arbitrator : arbitrators) {
         auto memo = "arbitration_id: " + std::to_string(arbitration_id)
