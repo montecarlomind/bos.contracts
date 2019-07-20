@@ -45,12 +45,12 @@ void bos_oracle::subscribe(uint64_t service_id, name contract_account,
   // require_auth(contract_account);
 
 
-  asset price_by_month =
-      get_price_by_fee_type(service_id, fee_type::fee_month);
-  check(price_by_month.amount > 0 && amount >= price_by_month,
-        "amount must greater than price by month");
+  // asset price_by_month =
+  //     get_price_by_fee_type(service_id, fee_type::fee_month);
+  // check(price_by_month.amount > 0 && amount >= price_by_month,
+  //       "amount must greater than price by month");
 
-  transfer(account, consumer_account, amount, memo);
+  // transfer(account, consumer_account, amount, memo);
 
   // add consumer
   data_consumers consumertable(_self, _self.value);
@@ -78,11 +78,12 @@ void bos_oracle::subscribe(uint64_t service_id, name contract_account,
     subs.account = account;
     subs.contract_account = contract_account;
     subs.action_name = action_name;
-    subs.payment = amount;
+    subs.payment = asset(0, core_symbol());//amount;
     subs.consumption = asset(0, core_symbol());
     subs.month_consumption = asset(0, core_symbol());
     subs.balance =  subs.payment - subs.consumption-subs.month_consumption ;
     subs.subscription_time = time_point_sec(now());
+    subs.last_payment_time = time_point_sec();
     subs.status = subscription_status::subscription_subscribe;
   });
 }
@@ -112,7 +113,7 @@ void bos_oracle::requestdata(uint64_t service_id, name contract_account,
   fee_service(service_id, contract_account, action_name,
               fee_type::fee_times);
 
-  data_service_requests reqtable(_self, _self.value);
+  data_service_requests reqtable(_self, service_id);
   bool flag = (reqtable.begin() == reqtable.end());
 
   reqtable.emplace(_self, [&](auto &r) {
@@ -123,9 +124,28 @@ void bos_oracle::requestdata(uint64_t service_id, name contract_account,
     r.requester = requester;
     r.request_time = time_point_sec(now());
     r.request_content = request_content;
+    r.status = request_status::reqeust_valid;
   });
   
   
+}
+
+
+/**
+ * @brief 
+ * 
+ * @param service_id 
+ * @param contract_account 
+ * @param action_name 
+ * @param account 
+ * @param amount 
+ * @param memo 
+ */
+void bos_oracle::payservice(uint64_t service_id, name contract_account, asset amount, std::string memo) {
+ require_auth(contract_account);
+  check(amount.amount > 0, "amount must be greater than zero");
+ transfer(contract_account, consumer_account, amount, "");
+ pay_service( service_id,  contract_account,  amount);
 }
 
 /**
@@ -138,14 +158,12 @@ void bos_oracle::requestdata(uint64_t service_id, name contract_account,
  * @param amount 
  * @param memo 
  */
-void bos_oracle::payservice(uint64_t service_id, name contract_account,
-                            name action_name, name account, asset amount,
-                            std::string memo) {
+void bos_oracle::pay_service(uint64_t service_id, name contract_account, asset amount) {
 
-  require_auth(account);
+ 
   // require_auth(contract_account);
-  check(amount.amount > 0, "amount must be greater than zero");
-  transfer(account, consumer_account, amount, memo);
+ 
+  
 
   data_service_subscriptions substable(_self,service_id);
 
@@ -154,18 +172,20 @@ void bos_oracle::payservice(uint64_t service_id, name contract_account,
   auto subs_itr = substable.find(contract_account.value);
   check(subs_itr != substable.end(), "contract_account does not exist");
 
-  substable.modify(subs_itr, _self,
-                   [&](auto &subs) { subs.payment += amount; });
+  substable.modify(subs_itr, _self, [&](auto &subs) {
+    subs.payment += amount;
+    subs.balance = subs.payment - subs.consumption - subs.month_consumption;
+  });
 
-  transaction t;
-  t.actions.emplace_back(
-      permission_level{_self, active_permission}, _self, "confirmpay"_n,
-      std::make_tuple(service_id, contract_account, action_name, amount));
-  t.delay_sec = 120; // seconds
-  uint128_t deferred_id =
-      (uint128_t(contract_account.value) << 64) | action_name.value;
-  cancel_deferred(deferred_id);
-  t.send(deferred_id, _self);
+  // transaction t;
+  // t.actions.emplace_back(
+  //     permission_level{_self, active_permission}, _self, "confirmpay"_n,
+  //     std::make_tuple(service_id, contract_account, action_name, amount));
+  // t.delay_sec = 120; // seconds
+  // uint128_t deferred_id =
+  //     (uint128_t(contract_account.value) << 64) | action_name.value;
+  // cancel_deferred(deferred_id);
+  // t.send(deferred_id, _self);
 }
 
 /**
@@ -178,19 +198,20 @@ void bos_oracle::payservice(uint64_t service_id, name contract_account,
  */
 void bos_oracle::confirmpay(uint64_t service_id, name contract_account,
                             name action_name, asset amount) {
+                              print("%%%%%%%%%%%%%%%%%%%%%%%%confirmpay^^^^^^^^^^^^^^^^^^^^^^^^^^^");
                 require_auth(_self);
-  check(amount.amount > 0, "amount must be greater than zero");
-  data_service_subscriptions substable(_self, service_id);
+  // check(amount.amount > 0, "amount must be greater than zero");
+  // data_service_subscriptions substable(_self, service_id);
 
-  // auto id =
-  //     get_hash_key(get_uuu_hash(service_id, contract_account, action_name));
-  auto subs_itr = substable.find(contract_account.value);
-  check(subs_itr != substable.end(), "contract_account does not exist");
-  check(subs_itr->payment > amount, "payment must be greater than amount");
-  substable.modify(subs_itr, _self, [&](auto &subs) {
-    subs.payment -= amount;
-    subs.balance += amount;
-  });
+  // // auto id =
+  // //     get_hash_key(get_uuu_hash(service_id, contract_account, action_name));
+  // auto subs_itr = substable.find(contract_account.value);
+  // check(subs_itr != substable.end(), "contract_account does not exist");
+  // check(subs_itr->payment > amount, "payment must be greater than amount");
+  // substable.modify(subs_itr, _self, [&](auto &subs) {
+  //   subs.payment -= amount;
+  //   subs.balance += amount;
+  // });
 }
 
 

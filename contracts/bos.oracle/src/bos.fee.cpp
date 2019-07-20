@@ -84,10 +84,20 @@ push_records pushtable(_self, service_id);
     pushtable.emplace(_self, [&](auto &p) {
       p.service_id = service_id;
       add_time(p.times, p.month_times, true);
+         print(p.times);
+                     print("==new==times");
+                       print(p.month_times);
+                         print("====month times");
     });
   } else {
     pushtable.modify(push_itr, same_payer,
-                     [&](auto &p) { add_time(p.times, p.month_times); });
+                     [&](auto &p) { add_time(p.times, p.month_times); 
+                     print(p.times);
+                     print("====times=====");
+                       print(p.month_times);
+                         print("====month times=====");
+                     });
+
   }
 
  provider_push_records providetable(_self, service_id);
@@ -199,7 +209,7 @@ asset bos_oracle::get_price_by_fee_type(uint64_t service_id, uint8_t fee_type) {
  */
 void bos_oracle::fee_service(uint64_t service_id, name contract_account,
                              name action_name, uint8_t fee_type) {
-  static constexpr uint32_t month_seconds = 30 * 24 * 60 * 60;
+  // static constexpr uint32_t month_seconds = 30 * 24 * 60 * 60;
   // //   token::transfer_action transfer_act{ token_account, { account,
   // active_permission } };
   // //          transfer_act.send( account, consumer_account, amount, memo );
@@ -213,24 +223,60 @@ void bos_oracle::fee_service(uint64_t service_id, name contract_account,
   // transfer(account, consumer_account, amount, memo);
   asset price_by_times = get_price_by_fee_type(service_id, fee_type);
 
+ check(price_by_times.amount > 0 ,
+        " get price by times cound not be greater than zero");
+
   data_service_subscriptions substable(_self, service_id);
   // auto id =
   //     get_hash_key(get_uuu_hash(service_id, contract_account, action_name));
   auto subs_itr = substable.find(contract_account.value);
   check(subs_itr != substable.end(), "contract_account does not exist");
 
-  check(price_by_times.amount > 0 and subs_itr->balance >= price_by_times,
-        "balance must greater than price by times");
+  check(subs_itr->balance >= price_by_times,
+        "balance cound not be  greater than price by times");
+ 
 
   substable.modify(subs_itr, _self, [&](auto &subs) {
-    subs.balance -= price_by_times;
     if (fee_type::fee_times == fee_type) {
       subs.consumption += price_by_times;
     } else {
       subs.month_consumption += price_by_times;
-      subs.last_payment_time += month_seconds;
+      subs.last_payment_time = time_point_sec(now());
     }
+    subs.balance =  subs.payment - subs.consumption-subs.month_consumption ;
   });
+
+  service_consumptions consumptionstable(_self, service_id);
+    auto consumptions_itr = consumptionstable.find(service_id);
+  if (consumptions_itr == consumptionstable.end()) {
+    consumptionstable.emplace(_self, [&](auto &c) {
+      c.service_id = service_id;
+      if (fee_type::fee_times == fee_type) {
+      c.consumption = price_by_times;
+      c.month_consumption = asset(0,core_symbol());
+      } else {
+      c.consumption = asset(0,core_symbol());
+      c.month_consumption = price_by_times;
+      }
+      c.update_time = time_point_sec(now());
+     
+    });
+  } else {
+    consumptionstable.modify(consumptions_itr, same_payer, [&](auto &c) {
+       if (fee_type::fee_times == fee_type) {
+         print("%%%%%%%%%%consumption");
+         c.consumption.print();
+         price_by_times.print();
+          print("%%%%%%%00000%%%consumption");
+
+      c.consumption += price_by_times;
+      } else {
+      c.month_consumption += price_by_times;
+      }
+      c.update_time = time_point_sec(now());
+    });
+  }
+
 
 }
 
@@ -308,7 +354,7 @@ bos_oracle::get_subscription_list(uint64_t service_id) {
  */
 std::vector<std::tuple<name, name, uint64_t>>
 bos_oracle::get_request_list(uint64_t service_id, uint64_t request_id) {
-
+print("=-=============get_request_list in===========");
   static constexpr int64_t request_time_deadline =
       2 ; // 2 hours
   std::vector<std::tuple<name, name, uint64_t>> receive_contracts;
@@ -323,12 +369,14 @@ bos_oracle::get_request_list(uint64_t service_id, uint64_t request_id) {
     lower = request_time_idx.lower_bound(
         static_cast<uint64_t>(req_itr->request_time.sec_since_epoch()));
   }
-
+  print("=-=============get_request_list while before===========");
   while (lower != upper) {
+    print("=-=============get_request_list while (lower != upper)===========");
     auto req = lower++;
     if (req->status == request_status::reqeust_valid &&
         time_point_sec(now()) - req->request_time <
             eosio::hours(request_time_deadline)) {
+               print("=-=============get_request_list while  if===========");
       receive_contracts.push_back(std::make_tuple(
           req->contract_account, req->action_name, req->request_id));
     }
@@ -383,6 +431,11 @@ bos_oracle::get_provider_list(uint64_t service_id) {
   std::vector<std::tuple<name,asset>> providers;
 
   for (const auto &p : provisionstable) {
+    
+    print("p.stake_amount.amount");
+    print(p.stake_amount.amount);
+    print("p.freeze_amount.amount");
+    print(p.freeze_amount.amount);
     if (p.status == provision_status::provision_reg && p.stake_amount.amount-p.freeze_amount.amount > 0) {
       providers.push_back(std::make_tuple(p.account,p.stake_amount-p.freeze_amount));
     }

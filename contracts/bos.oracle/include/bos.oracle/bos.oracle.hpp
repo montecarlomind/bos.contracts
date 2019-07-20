@@ -126,10 +126,10 @@ public:
       time_point_sec update_start_time);
 
   [[eosio::action]] void stakeasset(uint64_t service_id, name account,
-                                     asset stake_amount);
+                                     asset stake_amount, std::string memo);
 
   [[eosio::action]] void unstakeasset(uint64_t service_id, name account,
-                                     asset stake_amount);
+                                     asset stake_amount, std::string memo);
 
   [[eosio::action]] void addfeetypes(uint64_t service_id,
                                      std::vector<uint8_t> fee_types,
@@ -138,17 +138,20 @@ public:
                                     asset service_price);
 
   [[eosio::action]] void multipush(uint64_t service_id, name provider,
-                                   const string &data_json, bool is_request);
+                                   string data_json, bool is_request);
 
   [[eosio::action]] void pushdata(uint64_t service_id, name provider,
                                   name contract_account, name action_name,
-                                  uint64_t request_id, const string &data_json);
+                                  uint64_t request_id, string data_json);
+  [[eosio::action]] void innerpush(uint64_t service_id, name provider,
+                                  name contract_account, name action_name,
+                                  uint64_t request_id, string data_json);
   [[eosio::action]] void claim(name account, name receive_account);
 
   [[eosio::action]] void execaction(uint64_t service_id, uint64_t action_type);
 
   [[eosio::action]] void unregservice(uint64_t service_id, name account,
-                                      uint64_t is_suspense);
+                                      uint64_t status);
   using regservice_action =
       eosio::action_wrapper<"regservice"_n, &bos_oracle::regservice>;
 
@@ -168,6 +171,8 @@ public:
 
   using pushdata_action =
       eosio::action_wrapper<"pushdata"_n, &bos_oracle::pushdata>;
+  using innerpush_action =
+      eosio::action_wrapper<"innerpush"_n, &bos_oracle::innerpush>;
 
   using claim_action =
       eosio::action_wrapper<"claim"_n, &bos_oracle::addfeetype>;
@@ -192,9 +197,7 @@ public:
                                      name action_name, name requester,
                                      std::string request_content);
 
-  [[eosio::action]] void payservice(uint64_t service_id, name contract_account,
-                                    name action_name, name account,
-                                    asset amount, std::string memo);
+  [[eosio::action]] void payservice(uint64_t service_id, name contract_account, asset amount, std::string memo);
   [[eosio::action]] void confirmpay(uint64_t service_id, name contract_account,
                                     name action_name, asset amount);
   using subscribe_action =
@@ -212,7 +215,7 @@ public:
   /// bos.riskctrl begin
   ///
   ///
-  [[eosio::action]] void deposit(uint64_t service_id, name from, name to,
+  [[eosio::action]] void deposit( name from, name to,
                                  asset quantity, string memo, bool is_notify);
   [[eosio::action]] void withdraw(uint64_t service_id, name from, name to,
                                   asset quantity, string memo);
@@ -225,7 +228,9 @@ public:
   ///
   /// bos.riskctrl end
 
-  /// bos.arbitration begin
+        // [[eosio::on_notify("eosio.token::transfer")]] 
+      void on_transfer(name from, name to, asset quantity, std::string memo);
+ /// bos.arbitration begin
   ///
   ///
     [[eosio::action]] void regarbitrat( name account, public_key pubkey, uint8_t type, asset stake_amount, std::string public_info );
@@ -278,7 +283,8 @@ private:
   bos_oracle_fee _fee_state;
 
   // provider
-
+  void stake_asset(uint64_t service_id, name account,
+                                     asset stake_amount);
   void add_times(uint64_t service_id, name account, name contract_account,
                  name action_name, bool is_request);
   std::tuple<uint64_t, uint64_t, uint64_t, uint64_t> get_times(
@@ -300,6 +306,7 @@ private:
                                    const std::set<name> &available_providers,
                                    asset freeze_amount);
   /// consumer
+  void pay_service(uint64_t service_id, name contract_account, asset amount);
   std::vector<std::tuple<name, name>> get_subscription_list(
       uint64_t service_id);
   std::vector<std::tuple<name, name, uint64_t>> get_request_list(
@@ -308,6 +315,8 @@ private:
 
   /// risk control
   void transfer(name from, name to, asset quantity, string memo) const;
+  void call_deposit( name from, name to,
+                         asset quantity,  bool is_notify);
   void add_freeze_delay(uint64_t service_id, name account,
                         time_point_sec start_time, uint64_t duration,
                         asset amount, uint64_t type);
@@ -331,3 +340,6 @@ private:
   /// common
   symbol core_symbol() const { return _core_symbol; };
 };
+
+
+

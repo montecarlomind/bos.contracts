@@ -2,7 +2,7 @@
 #include <eosiolib/eosio.hpp>
 
 /// provider
-enum service_status : uint8_t { service_in, service_cancel, service_pause };
+enum service_status : uint8_t { service_in, service_cancel, service_pause, service_freeze,service_emergency };
 
 enum consumer_status : uint8_t { consumer_on, consumer_stop };
 
@@ -31,7 +31,9 @@ enum injection_method : uint8_t {
 };
 
 enum transfer_type : uint8_t { tt_freeze , tt_delay };
-
+enum transfer_category : uint8_t { tc_service_stake , tc_pay_service,tc_deposit,tc_arbitration_stake };
+enum memo_index : uint8_t { index_category,index_service , index_count};
+enum memo_index_deposit : uint8_t { deposit_category,deposit_from ,deposit_to,deposit_notify , deposit_count};
 enum arbitration_timer_type: uint8_t {
   appeal_timeout,
   reappeal_timeout,
