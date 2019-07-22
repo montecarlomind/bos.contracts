@@ -460,7 +460,7 @@ vector<name> bos_oracle::random_arbitrator(uint64_t arbitration_id, uint64_t pro
     auto arbiprocess_tb = arbitration_processs( get_self(), get_self().value );
     auto arbipro_iter = arbiprocess_tb.find( process_id );
     check( arbipro_iter != arbiprocess_tb.end(), "Can not find such arbitration process");
-    print( "========================================> find process_id" );
+    print( "========================================> find process_id\n" );
 
     auto chosen_arbitrators = arbipro_iter->arbitrators; // 本轮次已经选择的仲裁员
     std::vector<name> chosen_from_arbitrators; // 需要从哪里选择出来仲裁员的地方
@@ -472,12 +472,16 @@ vector<name> bos_oracle::random_arbitrator(uint64_t arbitration_id, uint64_t pro
     {
         auto chosen = std::find(chosen_arbitrators.begin(), chosen_arbitrators.end(), iter->account);
         if (chosen == chosen_arbitrators.end() && !iter->is_malicious) {
-            print("push_back iter->account");
-            print(iter->account.to_string());
+            print("push_back iter->account\n");
+            print(iter->account.to_string() + "\n");
             chosen_from_arbitrators.push_back(iter->account);
         }
     }
 
+    print("chosen_from_arbitrators.size() ===> " + std::to_string(chosen_from_arbitrators.size()) + "\n");
+    print("arbi_to_chose ===> " + std::to_string(arbi_to_chose) + "\n");
+    print("arbitrators_set.size() ===> " + std::to_string(arbitrators_set.size()) + "\n");
+    
     // 专业仲裁第一轮, 人数指数倍增加, 2^1+1, 2^2+1, 2^3+1, 2^num+1, num为冲裁的轮次
     // 专业仲裁人数不够, 走大众仲裁
     // 人数不够情况有两种: 1.最开始不够; 2.随机选择过程中不够;
@@ -507,11 +511,14 @@ vector<name> bos_oracle::random_arbitrator(uint64_t arbitration_id, uint64_t pro
 
     // 挑选 `arbi_to_chose` 个仲裁员
     while (arbitrators_set.size() < arbi_to_chose) {
+        print("arbitrators_set.size() ===> " + std::to_string(arbitrators_set.size()) + "\n");
+
         auto total_arbi = chosen_from_arbitrators.size();
         auto tmp = tapos_block_prefix();
         auto arbi_id = random((void*)&tmp, sizeof(tmp));
         arbi_id %= total_arbi;
         auto arbitrator = chosen_from_arbitrators.at(arbi_id);
+        print("arbitrator ===> " + arbitrator.to_string());
         if (arbitrators_set.find(arbitrator) != arbitrators_set.end()) {
             continue;
         } else {
@@ -519,6 +526,7 @@ vector<name> bos_oracle::random_arbitrator(uint64_t arbitration_id, uint64_t pro
         }
     }
 
+    check(false, "========================================debug arbitrators");
     std::vector<name> final_arbi(arbitrators_set.begin(), arbitrators_set.end());
     return final_arbi;
 }
