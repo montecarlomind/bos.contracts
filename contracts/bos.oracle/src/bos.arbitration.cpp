@@ -93,7 +93,6 @@ void bos_oracle::complain( name applicant, uint64_t service_id, asset amount, st
     // 仲裁案件不存在或者存在但是状态为开始仲裁, 那么创建一个仲裁案件
     if (arbicaseapp_iter == arbicaseapp_tb_by_svc.end() || 
         (arbicaseapp_iter != arbicaseapp_tb_by_svc.end() && arbicaseapp_iter->arbi_step == arbi_step_type::arbi_started)) {
-        eosio::print("arbicaseapp_tb.emplace");
         arbicaseapp_tb.emplace( get_self(), [&]( auto& p ) {
             p.arbitration_id = arbi_id;
             p.appeal_id = appeal_id;
@@ -141,7 +140,7 @@ void bos_oracle::complain( name applicant, uint64_t service_id, asset amount, st
 /**
  * (数据提供者/数据使用者)应诉
  */
-void bos_oracle::respcase( name provider, uint64_t arbitration_id, uint64_t result, uint64_t process_id, bool is_provider) {
+void bos_oracle::respcase( name provider, uint64_t arbitration_id, uint64_t process_id) {
     require_auth( provider );
     // 检查仲裁案件状态
     auto arbicaseapp_tb = arbicaseapps( get_self(), get_self().value );
@@ -157,14 +156,20 @@ void bos_oracle::respcase( name provider, uint64_t arbitration_id, uint64_t resu
     auto arbiprocess_tb = arbitration_processs( get_self(), get_self().value );
     auto arbipro_iter = arbiprocess_tb.find( process_id );
     if ( arbipro_iter == arbiprocess_tb.end() ) {
+        uint64_t processid = 0;
         // 第一次应诉, 创建第1个仲裁过程
         arbiprocess_tb.emplace( get_self(), [&]( auto& p ) {
+            print("==============================>arbiprocess_tb.emplace");
             p.process_id = arbiprocess_tb.available_primary_key();
             p.arbitration_id = arbitration_id;
             p.num_id = 1; // 仲裁过程为第一轮
             p.required_arbitrator = pow(2, p.num_id) + 1; // 每一轮需要的仲裁员的个数
             p.add_responder(provider);
+            processid = p.process_id;
         } );
+        print("==============================> processid = ");
+        print(processid);
+        check(true, "==============================> processid ⬆⬆⬆⬆⬆");
         // 随机选择仲裁员
         random_chose_arbitrator(arbitration_id, process_id, arbi_iter->service_id, 3);
     } else {
@@ -415,7 +420,12 @@ void bos_oracle::rerespcase( name responder, uint64_t arbitration_id, uint64_t r
  * 随机选择仲裁员
  */
 void bos_oracle::random_chose_arbitrator(uint64_t arbitration_id, uint64_t process_id, uint64_t service_id, uint64_t arbi_to_chose) const {
+    print("==============================random_chose_arbitrator, arbitration_id = " + std::to_string(arbitration_id) + ", process_id = " + std::to_string(process_id)
+        + ", service_id = " + std::to_string(service_id) + ", arbi_to_chose = " + std::to_string(arbi_to_chose));
+
     vector<name> arbitrators = random_arbitrator(arbitration_id, process_id, arbi_to_chose);
+    check(false, "arbitrators length = " + std::to_string(arbitrators.size()));
+
     auto arbicaseapp_tb = arbicaseapps( get_self(), get_self().value );
     auto arbi_iter = arbicaseapp_tb.find( arbitration_id );
     check( arbi_iter != arbicaseapp_tb.end(), "Can not find such arbitration." );
@@ -441,16 +451,19 @@ void bos_oracle::random_chose_arbitrator(uint64_t arbitration_id, uint64_t proce
  * 为某一个仲裁的某一轮随机选择 `arbi_to_chose` 个仲裁员
  */
 vector<name> bos_oracle::random_arbitrator(uint64_t arbitration_id, uint64_t process_id, uint64_t arbi_to_chose) const {
+    print("=====> in random_arbitrator, arbitration_id = " + std::to_string(arbitration_id) + ", process_id = " + std::to_string(process_id) + ", arbi_to_chose = " + std::to_string(arbi_to_chose));
+
     auto arbicaseapp_tb = arbicaseapps( get_self(), get_self().value );
     auto iter_arbicaseapp = arbicaseapp_tb.find( arbitration_id );
-    check(iter_arbicaseapp != arbicaseapp_tb.end(), "Can not find such arbitration");
+    check( iter_arbicaseapp != arbicaseapp_tb.end(), "Can not find such arbitration" );
 
     auto arbiprocess_tb = arbitration_processs( get_self(), get_self().value );
     auto arbipro_iter = arbiprocess_tb.find( process_id );
     check( arbipro_iter != arbiprocess_tb.end(), "Can not find such arbitration process");
+    print( "========================================> find process_id" );
 
     auto chosen_arbitrators = arbipro_iter->arbitrators; // 本轮次已经选择的仲裁员
-    std::vector<name> chosen_from_arbitrators; // 需要选择仲裁员的地方
+    std::vector<name> chosen_from_arbitrators; // 需要从哪里选择出来仲裁员的地方
     std::set<name> arbitrators_set;
 
     // 遍历仲裁员表, 找出可以选择的仲裁员
@@ -459,6 +472,8 @@ vector<name> bos_oracle::random_arbitrator(uint64_t arbitration_id, uint64_t pro
     {
         auto chosen = std::find(chosen_arbitrators.begin(), chosen_arbitrators.end(), iter->account);
         if (chosen == chosen_arbitrators.end() && !iter->is_malicious) {
+            print("push_back iter->account");
+            print(iter->account.to_string());
             chosen_from_arbitrators.push_back(iter->account);
         }
     }

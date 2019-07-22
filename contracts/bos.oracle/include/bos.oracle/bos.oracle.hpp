@@ -222,7 +222,7 @@ public:
 
     [[eosio::action]] void complain( name applicant, uint64_t service_id, asset amount, std::string reason, uint8_t arbi_method );
 
-    [[eosio::action]] void respcase( name arbitrator, uint64_t arbitration_id, uint64_t result, uint64_t process_id, bool is_provider );
+    [[eosio::action]] void respcase( name provider, uint64_t arbitration_id, uint64_t process_id );
 
     [[eosio::action]] void resparbitrat( name arbitrator, asset amount, uint64_t arbitration_id, uint64_t process_id );
 
