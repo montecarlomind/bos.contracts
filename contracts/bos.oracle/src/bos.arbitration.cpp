@@ -214,9 +214,12 @@ void bos_oracle::uploadresult( name arbitrator, uint64_t arbitration_id, uint64_
         p.add_result(result);
     } );
 
-    // 计算本轮结果, 条件为上传结果的人数 >= 本轮所需要的仲裁员人数 / 2
+    // 计算本轮结果, 条件为上传结果的人数 >= 本轮所需要的仲裁员人数 / 2 + 1
     // 满足条件取消计算结果定时器, 直接计算上传结果
-    if (arbipro_iter->result_size() >= arbi_iter->required_arbitrator / 2) {
+    // Add result to arbitration_results
+    add_arbitration_result(arbitrator, arbitration_id, result, process_id);
+
+    if (arbipro_iter->result_size() >= arbipro_iter->required_arbitrator / 2 + 1) {
         auto timer_type = public_arbi ? arbitration_timer_type::public_upload_result_timeout : arbitration_timer_type::upload_result_timeout;
         uint128_t deferred_id = make_deferred_id(arbitration_id, timer_type);
         cancel_deferred(deferred_id);
@@ -228,6 +231,8 @@ void bos_oracle::uploadresult( name arbitrator, uint64_t arbitration_id, uint64_
  * 处理上传结果
  */
 void bos_oracle::handle_upload_result(name arbitrator, uint64_t arbitration_id, uint64_t process_id) {
+    print("handle_upload_result, arbitrator = " + arbitrator.to_string() + ", arbitration_id = " + std::to_string(arbitration_id) + ", process_id = " + std::to_string(process_id) + "\n");
+
     // 仲裁案件检查
     auto arbicaseapp_tb = arbicaseapps( get_self(), get_self().value );
     auto arbi_iter = arbicaseapp_tb.find( arbitration_id );
@@ -250,8 +255,6 @@ void bos_oracle::handle_upload_result(name arbitrator, uint64_t arbitration_id, 
         p.arbitration_result = arbi_result;
     } );
 
-    // Add result to arbitration_results
-    add_arbitration_result(arbitrator, arbitration_id, arbi_result, arbipro_iter->process_id);
     // 看是否有人再次申诉, 大众仲裁不允许再申诉
     if (arbi_iter->arbi_method == arbi_method_type::multiple_rounds) {
         timeout_deferred(arbitration_id, process_id, arbitration_timer_type::reappeal_timeout, eosio::hours(10).to_seconds());
