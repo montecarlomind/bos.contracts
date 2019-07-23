@@ -41,8 +41,8 @@ enum complainant_status : uint8_t
 
 enum arbi_method_type : uint8_t
 {
-   public_arbitration = 1,
-   multiple_rounds = 2
+   multiple_rounds = 1,
+   public_arbitration = 2
 };
 
 enum arbi_step_type : uint64_t
@@ -136,6 +136,8 @@ struct [[ eosio::table, eosio::contract("bos.oracle") ]] arbitration_process
    uint64_t required_arbitrator; // 每一轮需要的仲裁员的个数: 2^num_id+1
    std::vector<name> responders; // 数据提供者应诉者
    std::vector<name> arbitrators; // 每一轮响应的仲裁员
+   std::vector<name> random_arbitrators; // 每一轮随机选择的仲裁员
+   time_point_sec arbiresp_deadline; // 仲裁员应诉的截止时间
 
    asset stake_amount;
    std::vector<uint64_t> arbitrator_arbitration_results;
@@ -147,6 +149,7 @@ struct [[ eosio::table, eosio::contract("bos.oracle") ]] arbitration_process
    uint64_t by_arbi() const { return arbitration_id; }
    void add_responder ( name responder ) { responders.push_back( responder ); }
    void add_arbitrator ( name arbitrator ) { arbitrators.push_back( arbitrator ); }
+   void add_random_arbitrator ( name arbitrator ) { random_arbitrators.push_back( arbitrator ); }
    void add_result ( uint64_t result ) { arbitrator_arbitration_results.push_back( result ); }
    uint64_t result_size () const { return arbitrator_arbitration_results.size(); }
    uint64_t total_result () const {

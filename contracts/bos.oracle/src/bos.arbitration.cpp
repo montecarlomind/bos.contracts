@@ -227,8 +227,7 @@ void bos_oracle::uploadresult( name arbitrator, uint64_t arbitration_id, uint64_
 /**
  * 处理上传结果
  */
-void bos_oracle::handle_upload_result(name arbitrator, uint64_t arbitration_id, uint64_t process_id)
-{
+void bos_oracle::handle_upload_result(name arbitrator, uint64_t arbitration_id, uint64_t process_id) {
     // 仲裁案件检查
     auto arbicaseapp_tb = arbicaseapps( get_self(), get_self().value );
     auto arbi_iter = arbicaseapp_tb.find( arbitration_id );
@@ -270,7 +269,8 @@ void bos_oracle::resparbitrat( name arbitrator, asset amount, uint64_t arbitrati
     check(arbi_iter != arbicaseapp_tb.end(), "Can not find such arbitration.");
     bool public_arbi = arbi_iter->arbi_method == arbi_method_type::public_arbitration; // 是否为大众仲裁
     auto stake_amount = public_arbi ? 2 * amount : amount;
-    transfer(arbitrator, arbitrat_account, stake_amount, "resparbitrat deposit.");
+    // TODO
+    // transfer(arbitrator, arbitrat_account, stake_amount, "resparbitrat deposit.");
 
     arbicaseapp_tb.modify( arbi_iter, get_self(), [&]( auto& p ) {
         p.arbi_step = public_arbi ? arbi_step_type::arbi_public_responded 
@@ -298,9 +298,11 @@ void bos_oracle::resparbitrat( name arbitrator, asset amount, uint64_t arbitrati
             upload_result_timeout_deferred(arbitrator, arbitration_id, 0, arbitration_timer_type::upload_result_timeout, eosio::hours(10).to_seconds());
         }
     } else {
-        // 否则继续选择仲裁员
-        auto arbi_to_chose = arbiprocess_iter->required_arbitrator - arbiprocess_iter->arbitrators.size();
-        random_chose_arbitrator(arbitration_id, process_id, arbi_iter->service_id, arbi_to_chose);
+        if (arbiprocess_iter->arbiresp_deadline.utc_seconds < now()) {
+            // 如果仲裁员没有在指定时间内应诉, 那么继续选择仲裁员
+            auto arbi_to_chose = arbiprocess_iter->required_arbitrator - arbiprocess_iter->arbitrators.size();
+            random_chose_arbitrator(arbitration_id, process_id, arbi_iter->service_id, arbi_to_chose);
+        }
     }
 }
 
@@ -422,10 +424,7 @@ void bos_oracle::rerespcase( name responder, uint64_t arbitration_id, uint64_t r
 void bos_oracle::random_chose_arbitrator(uint64_t arbitration_id, uint64_t process_id, uint64_t service_id, uint64_t arbi_to_chose) const {
     print("==============================random_chose_arbitrator, arbitration_id = " + std::to_string(arbitration_id) + ", process_id = " + std::to_string(process_id)
         + ", service_id = " + std::to_string(service_id) + ", arbi_to_chose = " + std::to_string(arbi_to_chose));
-
     vector<name> arbitrators = random_arbitrator(arbitration_id, process_id, arbi_to_chose);
-    check(false, "arbitrators length = " + std::to_string(arbitrators.size()));
-
     auto arbicaseapp_tb = arbicaseapps( get_self(), get_self().value );
     auto arbi_iter = arbicaseapp_tb.find( arbitration_id );
     check( arbi_iter != arbicaseapp_tb.end(), "Can not find such arbitration." );
@@ -472,7 +471,7 @@ vector<name> bos_oracle::random_arbitrator(uint64_t arbitration_id, uint64_t pro
     {
         auto chosen = std::find(chosen_arbitrators.begin(), chosen_arbitrators.end(), iter->account);
         if (chosen == chosen_arbitrators.end() && !iter->is_malicious) {
-            print("push_back iter->account\n");
+            print("push_back iter->account: ");
             print(iter->account.to_string() + "\n");
             chosen_from_arbitrators.push_back(iter->account);
         }
@@ -481,7 +480,7 @@ vector<name> bos_oracle::random_arbitrator(uint64_t arbitration_id, uint64_t pro
     print("chosen_from_arbitrators.size() ===> " + std::to_string(chosen_from_arbitrators.size()) + "\n");
     print("arbi_to_chose ===> " + std::to_string(arbi_to_chose) + "\n");
     print("arbitrators_set.size() ===> " + std::to_string(arbitrators_set.size()) + "\n");
-    
+
     // 专业仲裁第一轮, 人数指数倍增加, 2^1+1, 2^2+1, 2^3+1, 2^num+1, num为冲裁的轮次
     // 专业仲裁人数不够, 走大众仲裁
     // 人数不够情况有两种: 1.最开始不够; 2.随机选择过程中不够;
@@ -511,22 +510,39 @@ vector<name> bos_oracle::random_arbitrator(uint64_t arbitration_id, uint64_t pro
 
     // 挑选 `arbi_to_chose` 个仲裁员
     while (arbitrators_set.size() < arbi_to_chose) {
-        print("arbitrators_set.size() ===> " + std::to_string(arbitrators_set.size()) + "\n");
+        print("arbitrators_set.size() ===> " + std::to_string(arbitrators_set.size()) + ", chosen_from_arbitrators.size() = " +
+            std::to_string(chosen_from_arbitrators.size()) + "\n");
 
         auto total_arbi = chosen_from_arbitrators.size();
         auto tmp = tapos_block_prefix();
         auto arbi_id = random((void*)&tmp, sizeof(tmp));
         arbi_id %= total_arbi;
         auto arbitrator = chosen_from_arbitrators.at(arbi_id);
-        print("arbitrator ===> " + arbitrator.to_string());
+        print("arbitrator ===> " + arbitrator.to_string() + "\n");
         if (arbitrators_set.find(arbitrator) != arbitrators_set.end()) {
+            print("arbitrators_set already has arbitrator ===> " + arbitrator.to_string() + "\n");
             continue;
         } else {
             arbitrators_set.insert(arbitrator);
+            print("arbitrators_set.insert arbitrator ===> " + arbitrator.to_string() + "\n");
+            print("arbitrators_set.insert, size() ===> " + std::to_string(arbitrators_set.size()) + "\n");
+            auto chosen = std::find(chosen_from_arbitrators.begin(), chosen_from_arbitrators.end(), arbitrator);
+            chosen_from_arbitrators.erase(chosen);
+            // 保存被选择的仲裁员
+            arbiprocess_tb.modify( arbipro_iter, get_self(), [&]( auto& p ) {
+                p.add_random_arbitrator(arbitrator);
+                if (arbitrators_set.size() == arbi_to_chose) {
+                    // 刚好选择完毕仲裁员, 那么设置这些仲裁员需要在指定时间内应诉的时间
+                    p.arbiresp_deadline = time_point_sec(now() + arbiresp_deadline);
+                }
+            } );
+            // if (arbitrators_set.size() == 3) {
+            //     check(false, "========================================1111111111 debug arbitrators\n");
+            // }
         }
     }
 
-    check(false, "========================================debug arbitrators");
+    // check(false, "========================================debug arbitrators");
     std::vector<name> final_arbi(arbitrators_set.begin(), arbitrators_set.end());
     return final_arbi;
 }

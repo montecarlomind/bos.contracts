@@ -24,6 +24,7 @@ public:
   static constexpr symbol _bos_symbol = symbol(symbol_code("BOS"), 4);
   static constexpr symbol _core_symbol = symbol(symbol_code("EOS"), 4);
   static constexpr uint64_t arbi_process_time_limit = 3600;
+  static constexpr uint64_t arbiresp_deadline = 3600 * 24; // 仲裁员响应的截止时间
   static constexpr double default_arbitration_correct_rate = 0.6f;
   
   using contract::contract;
