@@ -335,7 +335,9 @@ void bos_oracle::reappeal( name applicant, uint64_t arbitration_id, uint64_t ser
     auto svc_iter = svctable.find(service_id);
     check(svc_iter != svctable.end(), "service does not exist");
     check(svc_iter->status == service_status::service_in, "service status shoule be service_in");
-    transfer(applicant, arbitrat_account, amount, "reappeal.");
+
+    // TODO.
+    // transfer(applicant, arbitrat_account, amount, "reappeal.");
 
     // 新增申诉者资料
     auto complainant_tb = complainants( get_self(), get_self().value );
