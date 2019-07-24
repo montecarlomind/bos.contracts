@@ -143,7 +143,7 @@ struct [[ eosio::table, eosio::contract("bos.oracle") ]] arbitration_process
    std::vector<uint64_t> arbitrator_arbitration_results;
    std::string evidence_info;
    uint64_t arbitration_result;
-   uint64_t arbitration_method;
+   uint64_t arbi_method; // 本轮使用的仲裁方法
 
    uint64_t primary_key() const { return process_id; }
    uint64_t by_arbi() const { return arbitration_id; }

@@ -159,17 +159,14 @@ void bos_oracle::respcase( name provider, uint64_t arbitration_id, uint64_t proc
         uint64_t processid = 0;
         // 第一次应诉, 创建第1个仲裁过程
         arbiprocess_tb.emplace( get_self(), [&]( auto& p ) {
-            print("==============================>arbiprocess_tb.emplace");
             p.process_id = arbiprocess_tb.available_primary_key();
             p.arbitration_id = arbitration_id;
             p.num_id = 1; // 仲裁过程为第一轮
             p.required_arbitrator = pow(2, p.num_id) + 1; // 每一轮需要的仲裁员的个数
             p.add_responder(provider);
+            p.arbi_method = arbi_iter->arbi_method;
             processid = p.process_id;
         } );
-        print("==============================> processid = ");
-        print(processid);
-        check(true, "==============================> processid ⬆⬆⬆⬆⬆");
         // 随机选择仲裁员
         random_chose_arbitrator(arbitration_id, process_id, arbi_iter->service_id, 3);
     } else {
@@ -203,7 +200,6 @@ void bos_oracle::uploadresult( name arbitrator, uint64_t arbitration_id, uint64_
     auto arbicaseapp_tb = arbicaseapps( get_self(), get_self().value );
     auto arbi_iter = arbicaseapp_tb.find( arbitration_id );
     check(arbi_iter != arbicaseapp_tb.end(), "Can not find such arbitration case application.");
-    check(arbi_iter->deadline >= time_point_sec(now()), "update result deadline.");
     bool public_arbi = arbi_iter->arbi_method == arbi_method_type::public_arbitration;
 
     // 仲裁员上传本轮仲裁结果
@@ -231,8 +227,6 @@ void bos_oracle::uploadresult( name arbitrator, uint64_t arbitration_id, uint64_
  * 处理上传结果
  */
 void bos_oracle::handle_upload_result(name arbitrator, uint64_t arbitration_id, uint64_t process_id) {
-    print("handle_upload_result, arbitrator = " + arbitrator.to_string() + ", arbitration_id = " + std::to_string(arbitration_id) + ", process_id = " + std::to_string(process_id) + "\n");
-
     // 仲裁案件检查
     auto arbicaseapp_tb = arbicaseapps( get_self(), get_self().value );
     auto arbi_iter = arbicaseapp_tb.find( arbitration_id );
@@ -245,7 +239,7 @@ void bos_oracle::handle_upload_result(name arbitrator, uint64_t arbitration_id, 
 
     // 此处1表示申诉者赢, 应诉者输
     uint64_t arbi_result = 0;
-    if (arbipro_iter->total_result() >= arbi_iter->required_arbitrator / 2) {
+    if (arbipro_iter->total_result() >= arbipro_iter->required_arbitrator / 2) {
         arbi_result = 1;
     } else {
         arbi_result = 0;
@@ -361,7 +355,7 @@ void bos_oracle::reappeal( name applicant, uint64_t arbitration_id, uint64_t ser
 
     if(!is_provider) {
         // 如果是数据使用者再申诉, 那么通知所有的数据提供者
-        auto svcprovider_tb = data_service_provisions( get_self(), get_self().value );
+        auto svcprovider_tb = data_service_provisions( get_self(), service_id );
         auto svcprovider_tb_by_svc = svcprovider_tb.template get_index<"bysvcid"_n>();
         auto svcprovider_iter = svcprovider_tb_by_svc.find( service_id );
         check(svcprovider_iter != svcprovider_tb_by_svc.end(), "Such service has no providers.");
@@ -391,7 +385,7 @@ void bos_oracle::reappeal( name applicant, uint64_t arbitration_id, uint64_t ser
  * last_process_id 上一轮的仲裁过程ID
  */
 void bos_oracle::rerespcase( name responder, uint64_t arbitration_id, uint64_t result, uint64_t last_process_id, bool is_provider) {
-    require_auth( provider );
+    require_auth( responder );
     // 检查仲裁案件状态
     auto arbicaseapp_tb = arbicaseapps( get_self(), get_self().value );
     auto arbi_iter = arbicaseapp_tb.find( arbitration_id );
@@ -413,9 +407,10 @@ void bos_oracle::rerespcase( name responder, uint64_t arbitration_id, uint64_t r
     arbiprocess_tb.emplace( get_self(), [&]( auto& p ) {
         p.process_id = arbiprocess_tb.available_primary_key();
         p.arbitration_id = arbitration_id;
-        p.num_id = arbipro_iter->num_id + 1; // 仲裁过程为第一轮
+        p.num_id = arbipro_iter->num_id + 1; // 仲裁过程为上一轮轮次 + 1
         p.required_arbitrator = pow(2, p.num_id) + 1; // 每一轮需要的仲裁员的个数
         p.add_responder(responder);
+        p.arbi_method = arbi_iter->arbi_method;
         required_arbitrator = p.required_arbitrator;
         process_id = p.process_id;
     } );
@@ -427,8 +422,6 @@ void bos_oracle::rerespcase( name responder, uint64_t arbitration_id, uint64_t r
  * 随机选择仲裁员
  */
 void bos_oracle::random_chose_arbitrator(uint64_t arbitration_id, uint64_t process_id, uint64_t service_id, uint64_t arbi_to_chose) const {
-    print("==============================random_chose_arbitrator, arbitration_id = " + std::to_string(arbitration_id) + ", process_id = " + std::to_string(process_id)
-        + ", service_id = " + std::to_string(service_id) + ", arbi_to_chose = " + std::to_string(arbi_to_chose));
     vector<name> arbitrators = random_arbitrator(arbitration_id, process_id, arbi_to_chose);
     auto arbicaseapp_tb = arbicaseapps( get_self(), get_self().value );
     auto arbi_iter = arbicaseapp_tb.find( arbitration_id );
@@ -455,16 +448,13 @@ void bos_oracle::random_chose_arbitrator(uint64_t arbitration_id, uint64_t proce
  * 为某一个仲裁的某一轮随机选择 `arbi_to_chose` 个仲裁员
  */
 vector<name> bos_oracle::random_arbitrator(uint64_t arbitration_id, uint64_t process_id, uint64_t arbi_to_chose) const {
-    print("=====> in random_arbitrator, arbitration_id = " + std::to_string(arbitration_id) + ", process_id = " + std::to_string(process_id) + ", arbi_to_chose = " + std::to_string(arbi_to_chose));
-
     auto arbicaseapp_tb = arbicaseapps( get_self(), get_self().value );
-    auto iter_arbicaseapp = arbicaseapp_tb.find( arbitration_id );
-    check( iter_arbicaseapp != arbicaseapp_tb.end(), "Can not find such arbitration" );
+    auto arbicaseapp_iter = arbicaseapp_tb.find( arbitration_id );
+    check( arbicaseapp_iter != arbicaseapp_tb.end(), "Can not find such arbitration" );
 
     auto arbiprocess_tb = arbitration_processs( get_self(), get_self().value );
     auto arbipro_iter = arbiprocess_tb.find( process_id );
     check( arbipro_iter != arbiprocess_tb.end(), "Can not find such arbitration process");
-    print( "========================================> find process_id\n" );
 
     auto chosen_arbitrators = arbipro_iter->arbitrators; // 本轮次已经选择的仲裁员
     std::vector<name> chosen_from_arbitrators; // 需要从哪里选择出来仲裁员的地方
@@ -476,61 +466,47 @@ vector<name> bos_oracle::random_arbitrator(uint64_t arbitration_id, uint64_t pro
     {
         auto chosen = std::find(chosen_arbitrators.begin(), chosen_arbitrators.end(), iter->account);
         if (chosen == chosen_arbitrators.end() && !iter->is_malicious) {
-            print("push_back iter->account: ");
-            print(iter->account.to_string() + "\n");
             chosen_from_arbitrators.push_back(iter->account);
         }
     }
-
-    print("chosen_from_arbitrators.size() ===> " + std::to_string(chosen_from_arbitrators.size()) + "\n");
-    print("arbi_to_chose ===> " + std::to_string(arbi_to_chose) + "\n");
-    print("arbitrators_set.size() ===> " + std::to_string(arbitrators_set.size()) + "\n");
 
     // 专业仲裁第一轮, 人数指数倍增加, 2^1+1, 2^2+1, 2^3+1, 2^num+1, num为冲裁的轮次
     // 专业仲裁人数不够, 走大众仲裁
     // 人数不够情况有两种: 1.最开始不够; 2.随机选择过程中不够;
     // 大众仲裁人数为专业仲裁2倍, 启动过程一样, 阶段重新设置, 大众冲裁结束不能再申诉, 进入大众仲裁需要重新抵押, 抵押变为2倍
     // 增加抵押金, 记录方法为大众仲裁, 仲裁个数为2倍, 增加抵押金
-
     if(chosen_from_arbitrators.size() < arbi_to_chose) {
-        // 专业仲裁人数不够, 走大众仲裁
-        std::vector<name> final_arbi;
-        arbicaseapp_tb.modify(iter_arbicaseapp, get_self(), [&]( auto& p ) {
-            p.arbi_step = arbi_step_type::arbi_public_choosing_arbitrator; //大众仲裁阶段开始
-            p.arbi_method = arbi_method_type::public_arbitration; //仲裁案件变为大众仲裁
-        } );
-        // 新增一个大众仲裁过程
-        uint64_t proid = 0;
-        arbiprocess_tb.emplace( get_self(), [&]( auto& p ) {
-            p.process_id = arbiprocess_tb.available_primary_key();
-            p.arbitration_id = arbitration_id;
-            p.num_id = arbipro_iter->num_id + 1; // 仲裁过程+1
-            p.required_arbitrator = 2 * arbi_to_chose; // 该轮需要的仲裁员的个数
-            proid = p.process_id;
-        } );
-        // 挑选专业仲裁员过程中人数不够，进入大众仲裁，开始随机挑选大众仲裁
-        random_chose_arbitrator(arbitration_id, proid, iter_arbicaseapp->service_id, arbi_to_chose * 2);
-        return final_arbi;
+        if (arbicaseapp_iter->arbi_method ==  arbi_method_type::multiple_rounds) {
+            // 专业仲裁人数不够, 走大众仲裁
+            std::vector<name> final_arbi;
+            arbicaseapp_tb.modify(arbicaseapp_iter, get_self(), [&]( auto& p ) {
+                p.arbi_step = arbi_step_type::arbi_public_choosing_arbitrator; //大众仲裁阶段开始
+                p.arbi_method = arbi_method_type::public_arbitration; //仲裁案件变为大众仲裁
+            } );
+            // 修改本轮仲裁过程为大众仲裁
+            arbiprocess_tb.modify( arbipro_iter, get_self(), [&]( auto& p ) {
+                p.required_arbitrator = 2 * arbi_to_chose; // 该轮需要的仲裁员的个数
+                p.arbi_method = arbi_method_type::public_arbitration; //本轮变为大众仲裁
+            } );
+            // 挑选专业仲裁员过程中人数不够，进入大众仲裁，开始随机挑选大众仲裁
+            random_chose_arbitrator(arbitration_id, process_id, arbicaseapp_iter->service_id, arbi_to_chose * 2);
+            return final_arbi;
+        } else if (arbicaseapp_iter->arbi_method == arbi_method_type::public_arbitration) {
+            // 大众仲裁人数不够, TODO
+        }
     }
 
     // 挑选 `arbi_to_chose` 个仲裁员
     while (arbitrators_set.size() < arbi_to_chose) {
-        print("arbitrators_set.size() ===> " + std::to_string(arbitrators_set.size()) + ", chosen_from_arbitrators.size() = " +
-            std::to_string(chosen_from_arbitrators.size()) + "\n");
-
         auto total_arbi = chosen_from_arbitrators.size();
         auto tmp = tapos_block_prefix();
         auto arbi_id = random((void*)&tmp, sizeof(tmp));
         arbi_id %= total_arbi;
         auto arbitrator = chosen_from_arbitrators.at(arbi_id);
-        print("arbitrator ===> " + arbitrator.to_string() + "\n");
         if (arbitrators_set.find(arbitrator) != arbitrators_set.end()) {
-            print("arbitrators_set already has arbitrator ===> " + arbitrator.to_string() + "\n");
             continue;
         } else {
             arbitrators_set.insert(arbitrator);
-            print("arbitrators_set.insert arbitrator ===> " + arbitrator.to_string() + "\n");
-            print("arbitrators_set.insert, size() ===> " + std::to_string(arbitrators_set.size()) + "\n");
             auto chosen = std::find(chosen_from_arbitrators.begin(), chosen_from_arbitrators.end(), arbitrator);
             chosen_from_arbitrators.erase(chosen);
             // 保存被选择的仲裁员
@@ -541,13 +517,9 @@ vector<name> bos_oracle::random_arbitrator(uint64_t arbitration_id, uint64_t pro
                     p.arbiresp_deadline = time_point_sec(now() + arbiresp_deadline);
                 }
             } );
-            // if (arbitrators_set.size() == 3) {
-            //     check(false, "========================================1111111111 debug arbitrators\n");
-            // }
         }
     }
 
-    // check(false, "========================================debug arbitrators");
     std::vector<name> final_arbi(arbitrators_set.begin(), arbitrators_set.end());
     return final_arbi;
 }
